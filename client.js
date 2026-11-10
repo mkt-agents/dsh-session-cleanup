@@ -1,0 +1,1589 @@
+window.__ModuleLoader__.load({
+  id: '@local/dsh-session-cleanup',
+  factory(require) {
+    const React = require('react')
+    const h = React.createElement
+
+    const NS = 'session-cleanup'
+    const PANEL_ID = 'session-cleanup'
+    const STATE_PATH = 'dsh-session-cleanup/state'
+    const ACTION_PATH = 'dsh-session-cleanup/action'
+
+    const EN = {
+      'panel.title': 'Session cleanup',
+      'panel.subtitle': 'Find heavy sessions, archive them, or delete them into a recycle bin you can undo.',
+      'panel.refresh': 'Refresh',
+      'panel.loading': 'Loading sessions…',
+      'panel.error': 'Could not read sessions: {message}',
+      'panel.retry': 'Retry',
+      'panel.empty': 'No sessions.',
+      'panel.emptyFilter': 'No session matches “{query}”.',
+      'panel.section.active': 'Sessions',
+      'panel.section.archived': 'Archived',
+      'panel.ungrouped': 'Ungrouped',
+      'panel.ungroupedPath': 'not assigned to a workspace',
+      'panel.unknownSession': 'Untitled session',
+      'panel.updatedAt': 'updated {time}',
+      'panel.search': 'Search title, id, or path',
+      'panel.sort.updated': 'Newest first',
+      'panel.sort.size': 'Largest first',
+      'panel.sort.title': 'Title A→Z',
+      'panel.action.archive': 'Archive',
+      'panel.action.unarchive': 'Restore',
+      'panel.action.delete': 'Delete',
+      'panel.action.confirmDelete': 'Confirm delete',
+      'panel.action.cancel': 'Cancel',
+      'panel.action.selectAll': 'Select all',
+      'panel.action.clear': 'Clear',
+      'panel.action.collapse': 'Collapse group',
+      'panel.action.expand': 'Expand group',
+      'panel.badge.running': 'running',
+      'panel.badge.live': 'open',
+      'panel.badge.blank': 'empty',
+      'panel.badge.pinned': 'pinned',
+      'panel.badge.subagent': 'subagent',
+      'panel.hint.live': 'Open or running sessions cannot be deleted. Switch away from them first.',
+      'panel.bulk.selected': '{count} selected',
+      'panel.bulk.size': '{size} total',
+      'panel.bulk.archive': 'Archive selected',
+      'panel.bulk.unarchive': 'Restore selected',
+      'panel.bulk.delete': 'Delete selected',
+      'panel.bulk.confirm': 'Move {count} session(s) to the recycle bin?',
+      'panel.bulk.skipLive': '{count} open session(s) were skipped.',
+      'panel.bulk.selectGroup': 'Select sessions in this group',
+      'panel.bulk.running': 'Working…',
+      'panel.notice.ok': 'Done: {ok} changed, {failed} failed.',
+      'panel.notice.deleted': 'Moved {count} session(s) to the recycle bin. You can undo below.',
+      'panel.notice.firstError': 'First failure: {message}',
+      'panel.notice.empty': 'Nothing selected.',
+      'panel.stats.sessions': '{count} sessions · {size}',
+      'panel.stats.trash': 'Recycle bin: {count} · {size}',
+      'panel.stats.orphans': 'Orphan cache: {count} · {size}',
+      'panel.trash.title': 'Recycle bin',
+      'panel.trash.subtitle': 'Deleted sessions stay here until you purge them.',
+      'panel.trash.batch': '{count} session(s) · {size} · {time}',
+      'panel.trash.restore': 'Restore',
+      'panel.trash.purge': 'Purge',
+      'panel.trash.restoreAll': 'Restore batch',
+      'panel.trash.purgeAll': 'Purge batch',
+      'panel.trash.confirmPurge': 'Purge this for good?',
+      'panel.trash.confirmPurgeBatch': 'Purge all {count} session(s) in this batch?',
+      'panel.trash.restored': 'Restored {count} session(s).',
+      'panel.trash.purged': 'Purged {count} item(s).',
+      'panel.trash.empty': 'The recycle bin is empty.',
+      'panel.trash.emptyAll': 'Empty recycle bin',
+      'panel.trash.confirmEmpty': 'Purge every batch in the recycle bin?',
+      'panel.trash.itemFallback': 'Untitled session',
+      'panel.orphan.title': 'Archived entries with no stored log',
+      'panel.orphan.body':
+        '{count} archived id(s) no longer have a session log on disk, so they cannot be shown or restored. Clean them out of the archive list?',
+      'panel.orphan.action': 'Clean up {count}',
+      'panel.orphan.done': 'Removed {count} stale archive entry/entries.',
+      'panel.cache.title': 'Orphan projection cache',
+      'panel.cache.body':
+        '{count} cached projection file(s) ({size}) belong to sessions that no longer exist. Deleting them frees disk space without touching any live session.',
+      'panel.cache.action': 'Delete {count} file(s)',
+      'panel.cache.done': 'Removed {count} file(s), freed {size}.',
+      'panel.cache.unavailable': 'Session storage is unavailable, so orphan detection is disabled.',
+    }
+
+    const ZH = {
+      'panel.title': '会话清理',
+      'panel.subtitle': '按体积找出占用大的会话，归档或删除到可还原的回收站。',
+      'panel.refresh': '刷新',
+      'panel.loading': '正在读取会话…',
+      'panel.error': '读取会话失败：{message}',
+      'panel.retry': '重试',
+      'panel.empty': '没有会话。',
+      'panel.emptyFilter': '没有匹配“{query}”的会话。',
+      'panel.section.active': '会话',
+      'panel.section.archived': '已归档',
+      'panel.ungrouped': '未分组',
+      'panel.ungroupedPath': '未归属任何工作区',
+      'panel.unknownSession': '未命名会话',
+      'panel.updatedAt': '更新于 {time}',
+      'panel.search': '搜索标题、ID 或路径',
+      'panel.sort.updated': '最近更新',
+      'panel.sort.size': '体积最大',
+      'panel.sort.title': '标题 A→Z',
+      'panel.action.archive': '归档',
+      'panel.action.unarchive': '恢复',
+      'panel.action.delete': '删除',
+      'panel.action.confirmDelete': '确认删除',
+      'panel.action.cancel': '取消',
+      'panel.action.selectAll': '全选',
+      'panel.action.clear': '清空选择',
+      'panel.action.collapse': '收起分组',
+      'panel.action.expand': '展开分组',
+      'panel.badge.running': '运行中',
+      'panel.badge.live': '已打开',
+      'panel.badge.blank': '空白',
+      'panel.badge.pinned': '已置顶',
+      'panel.badge.subagent': '子会话',
+      'panel.hint.live': '已打开或运行中的会话不能删除，请先切换到其他会话。',
+      'panel.bulk.selected': '已选 {count} 项',
+      'panel.bulk.size': '共 {size}',
+      'panel.bulk.archive': '归档所选',
+      'panel.bulk.unarchive': '恢复所选',
+      'panel.bulk.delete': '删除所选',
+      'panel.bulk.confirm': '确定把 {count} 个会话移入回收站？',
+      'panel.bulk.skipLive': '已跳过 {count} 个已打开会话。',
+      'panel.bulk.selectGroup': '选择该分组内的会话',
+      'panel.bulk.running': '处理中…',
+      'panel.notice.ok': '完成：成功 {ok} 个，失败 {failed} 个。',
+      'panel.notice.deleted': '已把 {count} 个会话移入回收站，可在下方还原。',
+      'panel.notice.firstError': '首个失败原因：{message}',
+      'panel.notice.empty': '没有选中任何会话。',
+      'panel.stats.sessions': '{count} 个会话 · {size}',
+      'panel.stats.trash': '回收站：{count} 个 · {size}',
+      'panel.stats.orphans': '孤立缓存：{count} 个 · {size}',
+      'panel.trash.title': '回收站',
+      'panel.trash.subtitle': '删除的会话先放在这里，直到你彻底清除。',
+      'panel.trash.batch': '{count} 个会话 · {size} · {time}',
+      'panel.trash.restore': '还原',
+      'panel.trash.purge': '清除',
+      'panel.trash.restoreAll': '整批还原',
+      'panel.trash.purgeAll': '整批清除',
+      'panel.trash.confirmPurge': '确定彻底清除这一项？',
+      'panel.trash.confirmPurgeBatch': '确定彻底清除该批次的 {count} 个会话？',
+      'panel.trash.restored': '已还原 {count} 个会话。',
+      'panel.trash.purged': '已清除 {count} 项。',
+      'panel.trash.empty': '回收站是空的。',
+      'panel.trash.emptyAll': '清空回收站',
+      'panel.trash.confirmEmpty': '确定清空回收站里的全部批次？',
+      'panel.trash.itemFallback': '未命名会话',
+      'panel.orphan.title': '已归档但日志已不存在的条目',
+      'panel.orphan.body':
+        '有 {count} 条归档记录的会话日志在磁盘上已不存在，既无法显示也无法还原。要把它们从归档列表里清理掉吗？',
+      'panel.orphan.action': '清理这 {count} 条',
+      'panel.orphan.done': '已移除 {count} 条失效的归档记录。',
+      'panel.cache.title': '孤立投影缓存',
+      'panel.cache.body':
+        '有 {count} 个投影缓存文件（{size}）属于已经不存在的会话。删除它们可以释放磁盘空间，不会影响任何现存会话。',
+      'panel.cache.action': '删除这 {count} 个文件',
+      'panel.cache.done': '已删除 {count} 个文件，释放 {size}。',
+      'panel.cache.unavailable': '会话存储不可用，已停用孤立缓存检测。',
+    }
+
+    // Surface tokens: the host's own management-list contract is a fill plus a
+    // stroke (--dsw-alias-settings-card-*), and a raised band for headers.
+    // bg-layer-1/2 alone cannot express this: in the light palette they are the
+    // same pure white as the page, so a card painted with them has no visible
+    // boundary at all. Every surface therefore pairs a fill with a stroke.
+    const CSS = [
+      '.dshsc-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:13px;--dshsc-row-selected-bg:var(--dsw-alias-bg-multi-select);--dshsc-row-selected-bar:var(--dsw-alias-state-business-primary);}',
+      '.dshsc-head{display:flex;flex-direction:column;gap:8px;padding:14px 20px 10px;background:var(--dsw-alias-bg-base);border-bottom:1px solid var(--dsw-alias-border-l1);}',
+      '.dshsc-headRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}',
+      '.dshsc-h1{margin:0;font-size:16px;font-weight:600;line-height:24px;letter-spacing:-.01em;}',
+      '.dshsc-metaRow{display:flex;align-items:center;gap:6px 12px;min-width:0;flex-wrap:wrap;}',
+      '.dshsc-sub{margin:0;flex:1 1 200px;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.dshsc-spacer{flex:1;}',
+      '.dshsc-toolbar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:9px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);flex-wrap:wrap;}',
+      '.dshsc-toolbarLabel{display:inline-flex;align-items:center;gap:6px;padding-left:2px;color:var(--dsw-alias-label-secondary);font-size:12px;cursor:pointer;user-select:none;}',
+      '.dshsc-search{flex:1;min-width:150px;max-width:300px;height:25px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;}',
+      '.dshsc-search:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;}',
+      '.dshsc-select{height:25px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer;}',
+      '.dshsc-stats{display:flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;}',
+      '.dshsc-stat{padding:0 6px;border-radius:999px;background:var(--dsw-alias-bg-module-platform);white-space:nowrap;font-variant-numeric:tabular-nums;}',
+      '.dshsc-statWarn{color:var(--dsw-alias-state-warn-label);}',
+      '.dshsc-body{flex:1;min-height:0;overflow:auto;padding:12px 20px 20px;}',
+      '.dshsc-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;}',
+      '.dshsc-btn:hover:not(:disabled){border-color:var(--dsw-alias-border-l4);background:var(--dsw-alias-interactive-bg-hover);}',
+      '.dshsc-btn:disabled{opacity:.4;cursor:not-allowed;}',
+      '.dshsc-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;}',
+      '.dshsc-btnSm{height:24px;padding:0 9px;font-size:11px;border-radius:6px;}',
+      '.dshsc-btnGhost{background:transparent;border-color:transparent;color:var(--dsw-alias-label-secondary);}',
+      '.dshsc-btnGhost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:transparent;color:var(--dsw-alias-label-primary);}',
+      '.dshsc-btnDanger{color:var(--dsw-alias-state-error-primary);}',
+      '.dshsc-btnDanger:hover:not(:disabled){border-color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover-danger);}',
+      '.dshsc-btnSolidDanger{color:var(--dsw-alias-label-primary-inverted);background:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);font-weight:600;}',
+      '.dshsc-btnSolidDanger:hover:not(:disabled){background:var(--dsw-alias-state-error-secondary);border-color:var(--dsw-alias-state-error-secondary);}',
+      '.dshsc-card{margin:0 0 10px;border:1px solid var(--dsw-alias-settings-card-stroke);border-radius:10px;background:var(--dsw-alias-bg-base);overflow:hidden;}',
+      '.dshsc-cardLoose{border-style:dashed;}',
+      '.dshsc-cardHead{display:flex;align-items:center;gap:8px;min-height:34px;padding:0 10px 0 6px;background:var(--dsw-alias-bg-module-platform);border-bottom:1px solid var(--dsw-alias-settings-card-stroke);}',
+      '.dshsc-cardHeadEmpty{border-bottom:none;}',
+      '.dshsc-chevron{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;border-radius:5px;padding:0;transition:background .12s,color .12s;}',
+      '.dshsc-chevron:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      '.dshsc-cardTitle{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34%;}',
+      '.dshsc-cardPath{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44%;font-variant-numeric:tabular-nums;}',
+      '.dshsc-pill{flex:none;min-width:20px;padding:0 6px;border-radius:999px;background:var(--dsw-alias-settings-card-fill);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:17px;text-align:center;border:1px solid var(--dsw-alias-border-l3);font-variant-numeric:tabular-nums;}',
+      '.dshsc-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--dsw-alias-border-l2);transition:background .12s,box-shadow .12s;}',
+      '.dshsc-rowFirst{border-top:none;}',
+      '.dshsc-row:hover{background:var(--dsw-alias-interactive-bg-hover);}',
+      '.dshsc-rowSelected{background:var(--dshsc-row-selected-bg);box-shadow:inset 2px 0 0 var(--dshsc-row-selected-bar);}',
+      '.dshsc-rowSelected:hover{background:var(--dshsc-row-selected-bg);}',
+      '.dshsc-rowNested{padding-left:30px;}',
+      '.dshsc-check{flex:none;width:15px;height:15px;margin:0;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer;}',
+      '.dshsc-check:disabled{cursor:not-allowed;opacity:.45;}',
+      '.dshsc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;cursor:pointer;}',
+      '.dshsc-mainStatic{cursor:default;}',
+      '.dshsc-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px;}',
+      '.dshsc-titleMuted{color:var(--dsw-alias-label-tertiary);}',
+      '.dshsc-meta{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;overflow:hidden;white-space:nowrap;}',
+      '.dshsc-size{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);}',
+      '.dshsc-sizeCell{flex:none;width:58px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);}',
+      '.dshsc-sizeBig{color:var(--dsw-alias-state-warn-label);font-weight:600;}',
+      '.dshsc-badge{padding:0 5px;border-radius:4px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);font-size:10px;line-height:14px;}',
+      '.dshsc-badgeLive{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary);}',
+      '.dshsc-badgeRun{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-primary);}',
+      '.dshsc-actions{display:flex;align-items:center;gap:4px;flex:none;}',
+      '.dshsc-notice{display:flex;align-items:center;gap:10px;margin:0 20px 10px;padding:8px 10px;border-radius:9px;border:1px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-bg-module-platform);font-size:12px;line-height:17px;}',
+      '.dshsc-noticeError{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}',
+      '.dshsc-empty{padding:28px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;text-align:center;}',
+      '.dshsc-skeleton{padding:28px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;}',
+      '.dshsc-dock{position:sticky;bottom:0;left:0;right:0;display:flex;align-items:center;gap:8px;padding:8px 20px;border-top:1px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-bg-module-platform);}',
+      '.dshsc-dockInfo{font-size:12px;font-weight:600;}',
+      '.dshsc-dockHint{font-size:11px;color:var(--dsw-alias-label-tertiary);}',
+      '.dshsc-confirmText{font-size:11px;color:var(--dsw-alias-state-error-primary);font-weight:500;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    ].join('')
+
+    /**
+     * Resolve a route path against the document's base directory, so the panel
+     * keeps working behind a reverse proxy that mounts DSH under a prefix.
+     * @param path - Route path without a leading slash.
+     * @returns the request path.
+     */
+    function apiPath(path) {
+      if (typeof document === 'undefined') return '/' + path
+      try {
+        return new URL(path, document.baseURI).pathname
+      } catch {
+        return '/' + path
+      }
+    }
+
+    /**
+     * Perform one JSON request against the plugin's Host routes.
+     * @param path - Route path without a leading slash.
+     * @param init - Fetch options.
+     * @returns the parsed payload.
+     */
+    async function request(path, init) {
+      const response = await fetch(apiPath(path), { cache: 'no-store', ...(init ?? {}) })
+      const text = await response.text()
+      let data
+      try {
+        data = text === '' ? undefined : JSON.parse(text)
+      } catch {
+        data = undefined
+      }
+      if (!response.ok) throw new Error((data && data.error) || 'HTTP ' + response.status)
+      return data
+    }
+
+    /**
+     * Post one action to the Host.
+     * @param body - Action payload.
+     * @returns the Host response.
+     */
+    function act(body) {
+      return request(ACTION_PATH, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    }
+
+    /**
+     * Format one timestamp for the row meta line.
+     * @param value - Milliseconds since the epoch.
+     * @returns the display text, or an empty string when unknown.
+     */
+    function formatTime(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return ''
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return ''
+      try {
+        return date.toLocaleString(undefined, {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      } catch {
+        return date.toISOString().slice(0, 16).replace('T', ' ')
+      }
+    }
+
+    /**
+     * Format a byte count with a compact unit.
+     * @param value - Bytes.
+     * @returns the display text, or an empty string for a non-positive value.
+     */
+    function formatBytes(value) {
+      const bytes = Number(value)
+      if (!Number.isFinite(bytes) || bytes <= 0) return ''
+      const units = ['B', 'KB', 'MB', 'GB', 'TB']
+      let size = bytes
+      let unit = 0
+      while (size >= 1024 && unit < units.length - 1) {
+        size /= 1024
+        unit += 1
+      }
+      const digits = unit === 0 ? 0 : size >= 100 ? 0 : size >= 10 ? 1 : 2
+      return size.toFixed(digits) + ' ' + units[unit]
+    }
+
+    /**
+     * Shorten a session id for an unnamed row.
+     * @param id - Session identity.
+     * @returns a compact label.
+     */
+    function shortId(id) {
+      const text = String(id)
+      const trimmed = text.startsWith('session-') ? text.slice('session-'.length) : text
+      return trimmed.slice(0, 8)
+    }
+
+    /**
+     * The last path segment of a session cwd.
+     * @param cwd - Absolute directory.
+     * @returns the folder name, or an empty string.
+     */
+    function baseName(cwd) {
+      if (typeof cwd !== 'string' || cwd === '') return ''
+      const parts = cwd.split(/[\\/]+/).filter((part) => part !== '')
+      return parts.length === 0 ? cwd : parts[parts.length - 1]
+    }
+
+    /** The trash-can glyph shown in the sidebar rail. */
+    function CleanupIcon({ size }) {
+      const edge = typeof size === 'number' && size > 0 ? size : 18
+      return h(
+        'svg',
+        {
+          width: edge,
+          height: edge,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+          focusable: false,
+        },
+        h('path', { d: 'M3 4.2h10' }),
+        h('path', { d: 'M6.2 4.2V3.1a.9.9 0 0 1 .9-.9h1.8a.9.9 0 0 1 .9.9v1.1' }),
+        h('path', { d: 'M4.4 4.2l.5 8.3a1.6 1.6 0 0 0 1.6 1.5h3a1.6 1.6 0 0 0 1.6-1.5l.5-8.3' }),
+        h('path', { d: 'M6.6 6.6v4.3M9.4 6.6v4.3' }),
+      )
+    }
+
+    /** A chevron that points down when expanded and right when collapsed. */
+    function Chevron({ open }) {
+      return h(
+        'svg',
+        {
+          width: 12,
+          height: 12,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.6,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          style: { transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 120ms' },
+          'aria-hidden': true,
+        },
+        h('path', { d: 'M6 3.5L10.5 8L6 12.5' }),
+      )
+    }
+
+    /**
+     * A tri-state checkbox: checked when every id is selected, indeterminate on
+     * a partial selection.
+     * @param props - checked/indeterminate/disabled and the change handler.
+     * @returns the input element.
+     */
+    function TriCheck({ checked, indeterminate, disabled, label, onChange }) {
+      const ref = React.useRef(null)
+      React.useEffect(() => {
+        if (ref.current !== null) ref.current.indeterminate = indeterminate === true
+      }, [indeterminate])
+      return h('input', {
+        ref,
+        type: 'checkbox',
+        className: 'dshsc-check',
+        checked,
+        disabled,
+        'aria-label': label,
+        onChange,
+      })
+    }
+
+    /**
+     * One row's inline actions, including the two-step delete confirmation.
+     * @param props - Row actions.
+     * @returns the action element.
+     */
+    function RowActions({ row, archived, pending, confirming, onArchive, onUnarchive, onDelete, onConfirm, onCancel, t }) {
+      const busy = pending
+      const canDelete = !row.live
+      return h(
+        'div',
+        { className: 'dshsc-actions' },
+        archived
+          ? h(
+              'button',
+              { type: 'button', className: 'dshsc-btn dshsc-btnSm', disabled: busy, onClick: () => onUnarchive(row.id) },
+              t('panel.action.unarchive'),
+            )
+          : h(
+              'button',
+              { type: 'button', className: 'dshsc-btn dshsc-btnSm', disabled: busy, onClick: () => onArchive(row.id) },
+              t('panel.action.archive'),
+            ),
+        confirming
+          ? [
+              h(
+                'button',
+                {
+                  key: 'confirm',
+                  type: 'button',
+                  className: 'dshsc-btn dshsc-btnSm dshsc-btnSolidDanger',
+                  disabled: busy,
+                  onClick: () => onConfirm(row.id),
+                },
+                t('panel.action.confirmDelete'),
+              ),
+              h(
+                'button',
+                { key: 'cancel', type: 'button', className: 'dshsc-btn dshsc-btnSm', disabled: busy, onClick: onCancel },
+                t('panel.action.cancel'),
+              ),
+            ]
+          : h(
+              'button',
+              {
+                type: 'button',
+                className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
+                disabled: busy || !canDelete,
+                title: canDelete ? undefined : t('panel.hint.live'),
+                onClick: () => onDelete(row.id),
+              },
+              t('panel.action.delete'),
+            ),
+      )
+    }
+
+    /**
+     * One workspace group rendered as a bordered card with its own header, a
+     * group checkbox, and collapsible rows.
+     * @param props - Group data and handlers.
+     * @returns the card element.
+     */
+    function GroupCard({
+      group,
+      selection,
+      pending,
+      confirming,
+      collapsed,
+      onToggleCollapse,
+      onToggleRow,
+      onToggleGroup,
+      onArchive,
+      onUnarchive,
+      onDelete,
+      onConfirm,
+      onCancel,
+      t,
+      archivedGroup,
+    }) {
+      const ids = group.rows.map((row) => row.id)
+      const selectedCount = ids.filter((id) => selection.has(id)).length
+      const allSelected = ids.length > 0 && selectedCount === ids.length
+      const partially = selectedCount > 0 && !allSelected
+      const headClass = 'dshsc-cardHead' + (collapsed ? ' dshsc-cardHeadEmpty' : '')
+      const groupBytes = group.rows.reduce((sum, row) => sum + (row.sizeBytes ?? 0), 0)
+      const busy = pending.length > 0
+      return h(
+        'section',
+        { className: 'dshsc-card' + (group.workspaceId === '' ? ' dshsc-cardLoose' : '') },
+        h(
+          'header',
+          { className: headClass },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshsc-chevron',
+              'aria-expanded': !collapsed,
+              'aria-label': collapsed ? t('panel.action.expand') : t('panel.action.collapse'),
+              onClick: onToggleCollapse,
+            },
+            h(Chevron, { open: !collapsed }),
+          ),
+          h(TriCheck, {
+            checked: allSelected,
+            indeterminate: partially,
+            disabled: ids.length === 0 || busy,
+            label: t('panel.bulk.selectGroup'),
+            onChange: () => onToggleGroup(ids, allSelected),
+          }),
+          h('span', { className: 'dshsc-cardTitle', title: group.title }, group.title || t('panel.ungrouped')),
+          h(
+            'span',
+            { className: 'dshsc-cardPath', title: group.path },
+            group.path || (archivedGroup ? '' : t('panel.ungroupedPath')),
+          ),
+          h('span', { className: 'dshsc-spacer' }),
+          formatBytes(groupBytes) === ''
+            ? null
+            : h('span', { className: 'dshsc-size' }, formatBytes(groupBytes)),
+          h('span', { className: 'dshsc-pill' }, String(group.rows.length)),
+        ),
+        collapsed
+          ? null
+          : group.rows.map((row, index) =>
+              h(
+                'div',
+                {
+                  key: row.id,
+                  className:
+                    'dshsc-row' +
+                    (index === 0 ? ' dshsc-rowFirst' : '') +
+                    (selection.has(row.id) ? ' dshsc-rowSelected' : ''),
+                },
+                h(TriCheck, {
+                  checked: selection.has(row.id),
+                  indeterminate: false,
+                  disabled: busy,
+                  label: row.title || row.id,
+                  onChange: () => onToggleRow(row.id),
+                }),
+                h(
+                  'div',
+                  { className: 'dshsc-main', onClick: () => onToggleRow(row.id) },
+                  h(
+                    'span',
+                    {
+                      className: 'dshsc-title' + (row.title === '' ? ' dshsc-titleMuted' : ''),
+                      title: row.title || row.id,
+                    },
+                    row.title || t('panel.unknownSession') + ' · ' + shortId(row.id),
+                  ),
+                  h(
+                    'span',
+                    { className: 'dshsc-meta' },
+                    formatTime(row.updatedAt) === ''
+                      ? null
+                      : h('span', null, t('panel.updatedAt', { time: formatTime(row.updatedAt) })),
+                    row.cwd === '' ? null : h('span', { title: row.cwd }, '· ' + baseName(row.cwd)),
+                    row.running
+                      ? h('span', { className: 'dshsc-badge dshsc-badgeRun' }, t('panel.badge.running'))
+                      : row.live
+                        ? h('span', { className: 'dshsc-badge dshsc-badgeLive' }, t('panel.badge.live'))
+                        : null,
+                    row.blank ? h('span', { className: 'dshsc-badge' }, t('panel.badge.blank')) : null,
+                    row.pinned && !archivedGroup
+                      ? h('span', { className: 'dshsc-badge' }, t('panel.badge.pinned'))
+                      : null,
+                    row.parentSessionId === null
+                      ? null
+                      : h('span', { className: 'dshsc-badge' }, t('panel.badge.subagent')),
+                  ),
+                ),
+                formatBytes(row.sizeBytes) === ''
+                  ? null
+                  : h(
+                      'span',
+                      { className: 'dshsc-sizeCell' + (row.sizeBytes >= 5 * 1024 * 1024 ? ' dshsc-sizeBig' : '') },
+                      formatBytes(row.sizeBytes),
+                    ),
+                h(RowActions, {
+                  row,
+                  archived: archivedGroup,
+                  pending: pending.includes(row.id),
+                  confirming: confirming === row.id,
+                  onArchive,
+                  onUnarchive,
+                  onDelete,
+                  onConfirm,
+                  onCancel,
+                  t,
+                }),
+              ),
+            ),
+      )
+    }
+
+    /**
+     * The cleanup panel rendered into the `main` slot for this plugin's id.
+     * @param props - Slot props; `t` is the bound locale translator.
+     * @returns the panel element.
+     */
+    function CleanupPage(props) {
+      const t = props.t ?? ((key) => key)
+      const [data, setData] = React.useState(null)
+      const [error, setError] = React.useState(null)
+      const [loading, setLoading] = React.useState(true)
+      const [pending, setPending] = React.useState([])
+      const [confirming, setConfirming] = React.useState(null)
+      const [confirmBulk, setConfirmBulk] = React.useState(false)
+      const [notice, setNotice] = React.useState(null)
+      const [query, setQuery] = React.useState('')
+      const [sort, setSort] = React.useState('updated')
+      const [selected, setSelected] = React.useState(function () {
+        return new Set()
+      })
+      const [collapsedGroups, setCollapsedGroups] = React.useState(function () {
+        return new Set()
+      })
+      const [purgeTarget, setPurgeTarget] = React.useState(null)
+      const [confirmEmpty, setConfirmEmpty] = React.useState(false)
+      const alive = React.useRef(true)
+
+      React.useEffect(() => {
+        alive.current = true
+        return () => {
+          alive.current = false
+        }
+      }, [])
+
+      const load = React.useCallback(async () => {
+        setLoading(true)
+        setError(null)
+        try {
+          const next = await request(STATE_PATH)
+          if (alive.current) setData(next)
+        } catch (cause) {
+          if (alive.current) setError(cause instanceof Error ? cause.message : String(cause))
+        } finally {
+          if (alive.current) setLoading(false)
+        }
+      }, [])
+
+      React.useEffect(() => {
+        load()
+      }, [load])
+
+      const archivedSet = React.useMemo(() => new Set(data?.archivedSessionIds ?? []), [data])
+      const pinnedSet = React.useMemo(() => new Set(data?.pinnedSessionIds ?? []), [data])
+      const rows = React.useMemo(
+        () => (data?.sessions ?? []).map((row) => ({ ...row, pinned: pinnedSet.has(row.id) })),
+        [data, pinnedSet],
+      )
+      const sessionById = React.useMemo(() => {
+        const map = new Map()
+        for (const row of rows) map.set(row.id, row)
+        return map
+      }, [rows])
+      // Archive ids whose log is gone: nothing can render or restore them.
+      const orphanCount = Math.max(0, archivedSet.size - rows.filter((row) => archivedSet.has(row.id)).length)
+
+      const comparator = React.useMemo(() => byRowOrder(pinnedSet, sort), [pinnedSet, sort])
+
+      const view = React.useMemo(() => {
+        const needle = query.trim().toLowerCase()
+        const matches = (row) => {
+          if (needle === '') return true
+          const haystack = (row.title + ' ' + row.id + ' ' + row.cwd).toLowerCase()
+          return haystack.includes(needle)
+        }
+        const workspaces = data?.workspaces ?? []
+        const accounted = new Set()
+        const activeGroups = []
+        const archivedRows = []
+        for (const row of rows) if (archivedSet.has(row.id) && matches(row)) archivedRows.push(row)
+        for (const workspace of workspaces) {
+          const members = []
+          for (const id of workspace.sessionIds) {
+            accounted.add(id)
+            const row = sessionById.get(id)
+            if (row === undefined || archivedSet.has(id) || !matches(row)) continue
+            members.push(row)
+          }
+          members.sort(comparator)
+          if (members.length > 0) {
+            activeGroups.push({
+              workspaceId: workspace.workspaceId,
+              title: workspace.title,
+              path: workspace.path,
+              rows: members,
+            })
+          }
+        }
+        const stray = rows.filter((row) => !accounted.has(row.id) && !archivedSet.has(row.id) && matches(row)).sort(comparator)
+        if (stray.length > 0) activeGroups.push({ workspaceId: '', title: '', path: '', rows: stray })
+        archivedRows.sort(comparator)
+        const archivedGroup =
+          archivedRows.length === 0
+            ? null
+            : { workspaceId: '__archived__', title: t('panel.section.archived'), path: '', rows: archivedRows }
+        return { activeGroups, archivedGroup }
+      }, [data, archivedSet, sessionById, comparator, query, t])
+
+      const visibleIds = React.useMemo(() => {
+        const ids = []
+        for (const group of view.activeGroups) for (const row of group.rows) ids.push(row.id)
+        if (view.archivedGroup !== null) for (const row of view.archivedGroup.rows) ids.push(row.id)
+        return ids
+      }, [view])
+
+      // Drop selections whose session disappeared after a delete or refresh.
+      React.useEffect(() => {
+        setSelected((current) => {
+          let changed = false
+          const next = new Set()
+          for (const id of current) {
+            if (sessionById.has(id)) next.add(id)
+            else changed = true
+          }
+          return changed ? next : current
+        })
+      }, [sessionById])
+
+      const selection = selected
+      const selectedIds = React.useMemo(() => {
+        const ids = []
+        for (const id of selection) if (sessionById.has(id)) ids.push(id)
+        return ids
+      }, [selection, sessionById])
+      const selectedBytes = selectedIds.reduce((sum, id) => sum + (sessionById.get(id)?.sizeBytes ?? 0), 0)
+      const selectedLive = selectedIds.filter((id) => sessionById.get(id)?.live === true)
+      const deletableIds = selectedIds.filter((id) => sessionById.get(id)?.live !== true)
+      const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selection.has(id))
+      const someVisibleSelected = visibleIds.some((id) => selection.has(id))
+
+      const toggleRow = React.useCallback((id) => {
+        setSelected((current) => {
+          const next = new Set(current)
+          if (next.has(id)) next.delete(id)
+          else next.add(id)
+          return next
+        })
+        setConfirming(null)
+        setConfirmBulk(false)
+      }, [])
+
+      const toggleGroup = React.useCallback((ids, allSelected) => {
+        setSelected((current) => {
+          const next = new Set(current)
+          for (const id of ids) {
+            if (allSelected) next.delete(id)
+            else next.add(id)
+          }
+          return next
+        })
+        setConfirmBulk(false)
+      }, [])
+
+      const toggleAll = React.useCallback(() => {
+        setSelected((current) => {
+          const next = new Set(current)
+          if (allVisibleSelected) for (const id of visibleIds) next.delete(id)
+          else for (const id of visibleIds) next.add(id)
+          return next
+        })
+        setConfirmBulk(false)
+      }, [allVisibleSelected, visibleIds])
+
+      const clearSelection = React.useCallback(() => {
+        setSelected(new Set())
+        setConfirming(null)
+        setConfirmBulk(false)
+      }, [])
+
+      const toggleCollapse = React.useCallback((key) => {
+        setCollapsedGroups((current) => {
+          const next = new Set(current)
+          if (next.has(key)) next.delete(key)
+          else next.add(key)
+          return next
+        })
+      }, [])
+
+      const run = React.useCallback(
+        async (op, ids) => {
+          if (ids.length === 0) {
+            setNotice({ kind: 'info', text: t('panel.notice.empty') })
+            return
+          }
+          setPending(ids)
+          setNotice(null)
+          try {
+            const labels = {}
+            if (op === 'delete') {
+              for (const id of ids) {
+                const row = sessionById.get(id)
+                if (row !== undefined && row.title !== '') labels[id] = row.title
+              }
+            }
+            const result = await act({ op, sessionIds: ids, labels })
+            const outcomes = result?.results ?? []
+            const failed = outcomes.filter((outcome) => outcome.ok !== true)
+            const ok = outcomes.length - failed.length
+            if (op === 'delete' && failed.length === 0) {
+              setNotice({ kind: 'info', text: t('panel.notice.deleted', { count: ok }) })
+            } else {
+              setNotice({
+                kind: failed.length === 0 ? 'info' : 'error',
+                text:
+                  t('panel.notice.ok', { ok, failed: failed.length }) +
+                  (failed.length === 0
+                    ? ''
+                    : ' ' + t('panel.notice.firstError', { message: firstFailure(failed) })),
+              })
+            }
+            if (alive.current && result?.state !== undefined) setData(result.state)
+            else await load()
+            if (alive.current) {
+              const done = new Set(ids.filter((id, index) => outcomes[index]?.ok === true))
+              setSelected((current) => {
+                const next = new Set()
+                for (const id of current) if (!done.has(id)) next.add(id)
+                return next
+              })
+            }
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause))
+            await load()
+          } finally {
+            if (alive.current) {
+              setPending([])
+              setConfirming(null)
+              setConfirmBulk(false)
+            }
+          }
+        },
+        [load, sessionById, t],
+      )
+
+      const onArchive = React.useCallback((id) => run('archive', [id]), [run])
+      const onUnarchive = React.useCallback((id) => run('unarchive', [id]), [run])
+      const onDelete = React.useCallback((id) => setConfirming(id), [])
+      const onConfirm = React.useCallback((id) => run('delete', [id]), [run])
+      const onCancel = React.useCallback(() => setConfirming(null), [])
+
+      /**
+       * Post one non-session action and fold its state back in.
+       * @param body - Action payload.
+       * @param describe - Builds the success notice from the response.
+       * @param busyKey - Pending key for the triggering control.
+       */
+      const runSimple = React.useCallback(
+        async (body, describe, busyKey) => {
+          setPending([busyKey])
+          setNotice(null)
+          try {
+            const result = await act(body)
+            const outcome = result?.results?.[0] ?? {}
+            if (outcome.ok !== true) {
+              setNotice({ kind: 'error', text: t('panel.notice.firstError', { message: outcome.error ?? 'unknown' }) })
+            } else {
+              setNotice({ kind: 'info', text: describe(result) })
+            }
+            if (alive.current && result?.state !== undefined) setData(result.state)
+            else await load()
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause))
+            await load()
+          } finally {
+            if (alive.current) {
+              setPending([])
+              setPurgeTarget(null)
+              setConfirmEmpty(false)
+            }
+          }
+        },
+        [load, t],
+      )
+
+      /**
+       * Restore or purge one recycle-bin entry.
+       * @param op - restore | purge.
+       * @param batch - Batch directory name.
+       * @param sessionId - Optional single session; omitted means the whole batch.
+       * @param count - Affected session count, for the notice.
+       */
+      const runBatch = React.useCallback(
+        (op, batch, sessionId, count) => {
+          const body = { op, batch }
+          if (sessionId !== undefined) body.sessionIds = [sessionId]
+          return runSimple(
+            body,
+            (result) => {
+              const outcome = result?.results?.[0] ?? {}
+              if (op === 'restore') {
+                return t('panel.trash.restored', { count: outcome.restored ?? count ?? 0 })
+              }
+              return t('panel.trash.purged', { count: outcome.purged ?? count ?? 1 })
+            },
+            batch,
+          )
+        },
+        [runSimple, t],
+      )
+
+      const bulkDelete = React.useCallback(() => {
+        if (deletableIds.length === 0) {
+          setNotice({ kind: 'error', text: t('panel.hint.live') })
+          return
+        }
+        if (!confirmBulk) {
+          setConfirmBulk(true)
+          return
+        }
+        run('delete', deletableIds)
+      }, [confirmBulk, deletableIds, run, t])
+
+      const sections = []
+      if (loading && data === null) {
+        sections.push(h('div', { className: 'dshsc-skeleton', key: 'loading' }, t('panel.loading')))
+      } else if (view.activeGroups.length === 0 && view.archivedGroup === null) {
+        sections.push(
+          h(
+            'div',
+            { className: 'dshsc-empty', key: 'empty' },
+            query.trim() === '' ? t('panel.empty') : t('panel.emptyFilter', { query: query.trim() }),
+          ),
+        )
+      } else {
+        for (const group of view.activeGroups) {
+          const key = group.workspaceId === '' ? '__ungrouped__' : group.workspaceId
+          sections.push(
+            h(GroupCard, {
+              key,
+              group,
+              archivedGroup: false,
+              selection,
+              pending,
+              confirming,
+              collapsed: collapsedGroups.has(key),
+              onToggleCollapse: () => toggleCollapse(key),
+              onToggleRow: toggleRow,
+              onToggleGroup: toggleGroup,
+              onArchive,
+              onUnarchive,
+              onDelete,
+              onConfirm,
+              onCancel,
+              t,
+            }),
+          )
+        }
+        if (view.archivedGroup !== null) {
+          const key = '__archived__'
+          sections.push(
+            h(GroupCard, {
+              key,
+              group: view.archivedGroup,
+              archivedGroup: true,
+              selection,
+              pending,
+              confirming,
+              collapsed: collapsedGroups.has(key),
+              onToggleCollapse: () => toggleCollapse(key),
+              onToggleRow: toggleRow,
+              onToggleGroup: toggleGroup,
+              onArchive,
+              onUnarchive,
+              onDelete,
+              onConfirm,
+              onCancel,
+              t,
+            }),
+          )
+        }
+      }
+
+      const orphanSection =
+        orphanCount === 0
+          ? null
+          : h(
+              'section',
+              { className: 'dshsc-card dshsc-cardLoose' },
+              h(
+                'header',
+                { className: 'dshsc-cardHead' },
+                h('span', { className: 'dshsc-cardTitle' }, t('panel.orphan.title')),
+                h('span', { className: 'dshsc-spacer' }),
+                h('span', { className: 'dshsc-pill' }, String(orphanCount)),
+              ),
+              h(
+                'div',
+                { className: 'dshsc-row dshsc-rowFirst' },
+                h(
+                  'div',
+                  { className: 'dshsc-main dshsc-mainStatic' },
+                  h('span', { className: 'dshsc-meta' }, t('panel.orphan.body', { count: orphanCount })),
+                ),
+                h(
+                  'div',
+                  { className: 'dshsc-actions' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshsc-btn dshsc-btnSm',
+                      disabled: pending.length > 0,
+                      onClick: () =>
+                        runSimple({ op: 'pruneArchived' }, (result) =>
+                          t('panel.orphan.done', { count: result?.pruned ?? 0 }),
+                        ),
+                    },
+                    t('panel.orphan.action', { count: orphanCount }),
+                  ),
+                ),
+              ),
+            )
+
+      const orphanCache = data?.orphanCache ?? { available: true, count: 0, bytes: 0 }
+      const cacheSection =
+        orphanCache.available !== true
+          ? null
+          : orphanCache.count === 0
+            ? null
+            : h(
+                'section',
+                { className: 'dshsc-card dshsc-cardLoose' },
+                h(
+                  'header',
+                  { className: 'dshsc-cardHead' },
+                  h('span', { className: 'dshsc-cardTitle' }, t('panel.cache.title')),
+                  h('span', { className: 'dshsc-spacer' }),
+                  h('span', { className: 'dshsc-size' }, formatBytes(orphanCache.bytes)),
+                  h('span', { className: 'dshsc-pill' }, String(orphanCache.count)),
+                ),
+                h(
+                  'div',
+                  { className: 'dshsc-row dshsc-rowFirst' },
+                  h(
+                    'div',
+                    { className: 'dshsc-main dshsc-mainStatic' },
+                    h(
+                      'span',
+                      { className: 'dshsc-meta' },
+                      t('panel.cache.body', { count: orphanCache.count, size: formatBytes(orphanCache.bytes) }),
+                    ),
+                  ),
+                  h(
+                    'div',
+                    { className: 'dshsc-actions' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
+                        disabled: pending.length > 0,
+                        onClick: () =>
+                          runSimple({ op: 'pruneOrphanCache' }, (result) =>
+                            t('panel.cache.done', {
+                              count: result?.removed ?? 0,
+                              size: formatBytes(result?.freed ?? 0) || '0 B',
+                            }),
+                          ),
+                      },
+                      t('panel.cache.action', { count: orphanCache.count }),
+                    ),
+                  ),
+                ),
+              )
+
+      const trashBatches = data?.trash ?? []
+      const trashSection =
+        trashBatches.length === 0
+          ? null
+          : h(
+              'section',
+              { className: 'dshsc-card' },
+              h(
+                'header',
+                { className: 'dshsc-cardHead' },
+                h('span', { className: 'dshsc-cardTitle' }, t('panel.trash.title')),
+                h('span', { className: 'dshsc-spacer' }),
+                confirmEmpty
+                  ? [
+                      h('span', { key: 'warn', className: 'dshsc-confirmText' }, t('panel.trash.confirmEmpty')),
+                      h(
+                        'button',
+                        {
+                          key: 'confirm',
+                          type: 'button',
+                          className: 'dshsc-btn dshsc-btnSm dshsc-btnSolidDanger',
+                          disabled: pending.length > 0,
+                          onClick: () =>
+                            runSimple({ op: 'emptyTrash' }, (result) =>
+                              t('panel.trash.purged', { count: result?.purged ?? 0 }),
+                            ),
+                        },
+                        t('panel.action.confirmDelete'),
+                      ),
+                      h(
+                        'button',
+                        {
+                          key: 'cancel',
+                          type: 'button',
+                          className: 'dshsc-btn dshsc-btnSm',
+                          disabled: pending.length > 0,
+                          onClick: () => setConfirmEmpty(false),
+                        },
+                        t('panel.action.cancel'),
+                      ),
+                    ]
+                  : h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
+                        disabled: pending.length > 0,
+                        onClick: () => setConfirmEmpty(true),
+                      },
+                      t('panel.trash.emptyAll'),
+                    ),
+                h(
+                  'span',
+                  { className: 'dshsc-pill' },
+                  String(trashBatches.reduce((sum, batch) => sum + batch.count, 0)),
+                ),
+              ),
+              h(
+                'div',
+                { className: 'dshsc-row dshsc-rowFirst' },
+                h(
+                  'div',
+                  { className: 'dshsc-main dshsc-mainStatic' },
+                  h('span', { className: 'dshsc-meta' }, t('panel.trash.subtitle')),
+                ),
+              ),
+              ...trashBatches.flatMap((batch) => {
+                const busy = pending.includes(batch.batch)
+                const confirmingBatch = purgeTarget === batch.batch
+                const time = formatTime(Date.parse(batch.createdAt))
+                const key = batch.batch
+                const rowsOut = [
+                  h(
+                    'div',
+                    { key: key + ':head', className: 'dshsc-row' },
+                    h(
+                      'div',
+                      { className: 'dshsc-main dshsc-mainStatic' },
+                      h('span', { className: 'dshsc-title' }, batch.batch),
+                      h(
+                        'span',
+                        { className: 'dshsc-meta' },
+                        h(
+                          'span',
+                          null,
+                          t('panel.trash.batch', {
+                            count: batch.count,
+                            size: formatBytes(batch.bytes) || '0 B',
+                            time,
+                          }),
+                        ),
+                      ),
+                      confirmingBatch
+                        ? h(
+                            'span',
+                            { className: 'dshsc-confirmText' },
+                            t('panel.trash.confirmPurgeBatch', { count: batch.count }),
+                          )
+                        : null,
+                    ),
+                    h(
+                      'div',
+                      { className: 'dshsc-actions' },
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshsc-btn dshsc-btnSm',
+                          disabled: busy,
+                          onClick: () => runBatch('restore', batch.batch, undefined, batch.count),
+                        },
+                        t('panel.trash.restoreAll'),
+                      ),
+                      confirmingBatch
+                        ? [
+                            h(
+                              'button',
+                              {
+                                key: 'confirm',
+                                type: 'button',
+                                className: 'dshsc-btn dshsc-btnSm dshsc-btnSolidDanger',
+                                disabled: busy,
+                                onClick: () => runBatch('purge', batch.batch, undefined, batch.count),
+                              },
+                              t('panel.action.confirmDelete'),
+                            ),
+                            h(
+                              'button',
+                              {
+                                key: 'cancel',
+                                type: 'button',
+                                className: 'dshsc-btn dshsc-btnSm',
+                                disabled: busy,
+                                onClick: () => setPurgeTarget(null),
+                              },
+                              t('panel.action.cancel'),
+                            ),
+                          ]
+                        : h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
+                              disabled: busy,
+                              onClick: () => setPurgeTarget(batch.batch),
+                            },
+                            t('panel.trash.purgeAll'),
+                          ),
+                    ),
+                  ),
+                ]
+                for (const item of batch.items) {
+                  const itemKey = key + ':' + item.sessionId
+                  const itemBusy = pending.includes(item.sessionId)
+                  const confirmingItem = purgeTarget === itemKey
+                  rowsOut.push(
+                    h(
+                      'div',
+                      { key: itemKey, className: 'dshsc-row dshsc-rowNested' },
+                      h(
+                        'div',
+                        { className: 'dshsc-main dshsc-mainStatic' },
+                        h(
+                          'span',
+                          {
+                            className: 'dshsc-title' + (item.title === '' ? ' dshsc-titleMuted' : ''),
+                            title: item.sessionId,
+                          },
+                          item.title || t('panel.trash.itemFallback') + ' · ' + shortId(item.sessionId),
+                        ),
+                        h(
+                          'span',
+                          { className: 'dshsc-meta' },
+                          item.cwdDir === '' ? null : h('span', null, item.cwdDir),
+                          formatBytes(item.size) === ''
+                            ? null
+                            : h('span', { className: 'dshsc-size' }, formatBytes(item.size)),
+                        ),
+                        confirmingItem
+                          ? h('span', { className: 'dshsc-confirmText' }, t('panel.trash.confirmPurge'))
+                          : null,
+                      ),
+                      h(
+                        'div',
+                        { className: 'dshsc-actions' },
+                        h(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'dshsc-btn dshsc-btnSm',
+                            disabled: itemBusy || busy,
+                            onClick: () => runBatch('restore', batch.batch, item.sessionId, 1),
+                          },
+                          t('panel.trash.restore'),
+                        ),
+                        confirmingItem
+                          ? [
+                              h(
+                                'button',
+                                {
+                                  key: 'confirm',
+                                  type: 'button',
+                                  className: 'dshsc-btn dshsc-btnSm dshsc-btnSolidDanger',
+                                  disabled: itemBusy || busy,
+                                  onClick: () => runBatch('purge', batch.batch, item.sessionId, 1),
+                                },
+                                t('panel.action.confirmDelete'),
+                              ),
+                              h(
+                                'button',
+                                {
+                                  key: 'cancel',
+                                  type: 'button',
+                                  className: 'dshsc-btn dshsc-btnSm',
+                                  disabled: itemBusy || busy,
+                                  onClick: () => setPurgeTarget(null),
+                                },
+                                t('panel.action.cancel'),
+                              ),
+                            ]
+                          : h(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
+                                disabled: itemBusy || busy,
+                                onClick: () => setPurgeTarget(itemKey),
+                              },
+                              t('panel.trash.purge'),
+                            ),
+                      ),
+                    ),
+                  )
+                }
+                return rowsOut
+              }),
+            )
+
+      const dock =
+        selectedIds.length === 0
+          ? null
+          : h(
+              'div',
+              { className: 'dshsc-dock' },
+              h('span', { className: 'dshsc-dockInfo' }, t('panel.bulk.selected', { count: selectedIds.length })),
+              formatBytes(selectedBytes) === ''
+                ? null
+                : h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.size', { size: formatBytes(selectedBytes) })),
+              selectedLive.length > 0
+                ? h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.skipLive', { count: selectedLive.length }))
+                : null,
+              confirmBulk
+                ? h('span', { className: 'dshsc-confirmText' }, t('panel.bulk.confirm', { count: deletableIds.length }))
+                : null,
+              h('span', { className: 'dshsc-spacer' }),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshsc-btn',
+                  disabled: pending.length > 0,
+                  onClick: () => run('archive', selectedIds),
+                },
+                t('panel.bulk.archive'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshsc-btn',
+                  disabled: pending.length > 0,
+                  onClick: () => run('unarchive', selectedIds),
+                },
+                t('panel.bulk.unarchive'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshsc-btn dshsc-btnSolidDanger',
+                  disabled: pending.length > 0 || deletableIds.length === 0,
+                  title: deletableIds.length === 0 ? t('panel.hint.live') : undefined,
+                  onClick: bulkDelete,
+                },
+                confirmBulk
+                  ? t('panel.action.confirmDelete')
+                  : t('panel.bulk.delete') + ' (' + String(deletableIds.length) + ')',
+              ),
+              confirmBulk
+                ? h(
+                    'button',
+                    { type: 'button', className: 'dshsc-btn', disabled: pending.length > 0, onClick: () => setConfirmBulk(false) },
+                    t('panel.action.cancel'),
+                  )
+                : null,
+              h(
+                'button',
+                { type: 'button', className: 'dshsc-btn dshsc-btnGhost', disabled: pending.length > 0, onClick: clearSelection },
+                t('panel.action.clear'),
+              ),
+            )
+
+      const stats = data?.stats
+      const statsRow =
+        stats === undefined
+          ? null
+          : h(
+              'div',
+              { className: 'dshsc-stats' },
+              h(
+                'span',
+                { className: 'dshsc-stat' },
+                t('panel.stats.sessions', {
+                  count: stats.sessionCount,
+                  size: formatBytes(stats.sessionsBytes) || '0 B',
+                }),
+              ),
+              stats.trashCount === 0
+                ? null
+                : h(
+                    'span',
+                    { className: 'dshsc-stat' },
+                    t('panel.stats.trash', {
+                      count: stats.trashCount,
+                      size: formatBytes(stats.trashBytes) || '0 B',
+                    }),
+                  ),
+              stats.orphanCacheCount === 0
+                ? null
+                : h(
+                    'span',
+                    { className: 'dshsc-stat dshsc-statWarn' },
+                    t('panel.stats.orphans', {
+                      count: stats.orphanCacheCount,
+                      size: formatBytes(stats.orphanCacheBytes) || '0 B',
+                    }),
+                  ),
+              pending.length > 0 ? h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.running')) : null,
+            )
+
+      return h(
+        'div',
+        { className: 'dshsc-root' },
+        h('style', { key: 'css' }, CSS),
+        h(
+          'div',
+          { className: 'dshsc-head' },
+          h(
+            'div',
+            { className: 'dshsc-headRow' },
+            h('h1', { className: 'dshsc-h1' }, t('panel.title')),
+            h('span', { className: 'dshsc-pill' }, String(visibleIds.length)),
+            h('span', { className: 'dshsc-spacer' }),
+            h(
+              'button',
+              { type: 'button', className: 'dshsc-btn dshsc-btnSm dshsc-btnGhost', onClick: () => load(), disabled: loading || pending.length > 0 },
+              t('panel.refresh'),
+            ),
+          ),
+          h(
+            'div',
+            { className: 'dshsc-metaRow' },
+            h('p', { className: 'dshsc-sub' }, t('panel.subtitle')),
+            statsRow,
+          ),
+          h(
+            'div',
+            { className: 'dshsc-toolbar' },
+            h(
+              'label',
+              { className: 'dshsc-toolbarLabel' },
+              h(TriCheck, {
+                checked: allVisibleSelected,
+                indeterminate: someVisibleSelected && !allVisibleSelected,
+                disabled: visibleIds.length === 0 || pending.length > 0,
+                label: t('panel.action.selectAll'),
+                onChange: toggleAll,
+              }),
+              t('panel.action.selectAll'),
+            ),
+            h('input', {
+              type: 'search',
+              className: 'dshsc-search',
+              placeholder: t('panel.search'),
+              value: query,
+              'aria-label': t('panel.search'),
+              onChange: (event) => setQuery(event.currentTarget.value),
+            }),
+            h(
+              'select',
+              {
+                className: 'dshsc-select',
+                value: sort,
+                'aria-label': t('panel.sort.updated'),
+                onChange: (event) => setSort(event.currentTarget.value),
+              },
+              h('option', { value: 'updated' }, t('panel.sort.updated')),
+              h('option', { value: 'size' }, t('panel.sort.size')),
+              h('option', { value: 'title' }, t('panel.sort.title')),
+            ),
+            selectedIds.length > 0
+              ? h('span', { className: 'dshsc-pill' }, t('panel.bulk.selected', { count: selectedIds.length }))
+              : null,
+            h('span', { className: 'dshsc-spacer' }),
+            loading ? h('span', { className: 'dshsc-dockHint' }, t('panel.loading')) : null,
+          ),
+        ),
+        error === null
+          ? null
+          : h(
+              'div',
+              { className: 'dshsc-notice dshsc-noticeError' },
+              t('panel.error', { message: error }),
+              h('span', { className: 'dshsc-spacer' }),
+              h('button', { type: 'button', className: 'dshsc-btn dshsc-btnSm', onClick: () => load() }, t('panel.retry')),
+            ),
+        notice === null
+          ? null
+          : h(
+              'div',
+              { className: 'dshsc-notice' + (notice.kind === 'error' ? ' dshsc-noticeError' : '') },
+              notice.text,
+            ),
+        h('div', { className: 'dshsc-body' }, ...sections, orphanSection, cacheSection, trashSection),
+        dock,
+      )
+    }
+
+    /**
+     * Sort rows by the selected order. Pins only float in the default
+     * most-recent order; an explicit size or title sort is taken literally.
+     * @param pinned - The registry-global pin set.
+     * @param mode - updated | size | title.
+     * @returns the comparator.
+     */
+    function byRowOrder(pinned, mode) {
+      return (left, right) => {
+        if (mode === 'size') return (right.sizeBytes ?? 0) - (left.sizeBytes ?? 0)
+        if (mode === 'title') {
+          const leftTitle = (left.title || left.id).toLowerCase()
+          const rightTitle = (right.title || right.id).toLowerCase()
+          const order = leftTitle.localeCompare(rightTitle)
+          if (order !== 0) return order
+          return (right.updatedAt ?? 0) - (left.updatedAt ?? 0)
+        }
+        const leftPinned = pinned.has(left.id) ? 1 : 0
+        const rightPinned = pinned.has(right.id) ? 1 : 0
+        if (leftPinned !== rightPinned) return rightPinned - leftPinned
+        return (right.updatedAt ?? 0) - (left.updatedAt ?? 0)
+      }
+    }
+
+    /**
+     * Describe the first failed outcome of one action batch.
+     * @param failed - Failed outcomes.
+     * @returns the message text.
+     */
+    function firstFailure(failed) {
+      const first = failed[0] ?? {}
+      return first.reason ?? first.error ?? 'unknown'
+    }
+
+    /**
+     * Activate the Client half: dictionaries, the main panel, and the sidebar
+     * entry that selects it.
+     * @param ctx - Client plugin context.
+     */
+    function apply(ctx) {
+      const t = ctx.locale.bind(NS)
+      ctx.effect(() => {
+        const disposers = []
+        for (const pair of [
+          ['en', EN],
+          ['zh', ZH],
+        ]) {
+          try {
+            disposers.push(ctx.locale.register(NS, pair[0], pair[1]))
+          } catch {}
+        }
+        disposers.push(
+          ctx.slots.inject('main', () =>
+            ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({ t }) }, CleanupPage),
+          ),
+        )
+        disposers.push(
+          ctx.slots.inject('sidebar.panellist', () =>
+            ctx.slots.register(
+              { name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => t('panel.title'), locale: NS },
+              CleanupIcon,
+            ),
+          ),
+        )
+        return () => {
+          for (const dispose of disposers) {
+            try {
+              dispose()
+            } catch {}
+          }
+        }
+      })
+    }
+
+    return { inject: ['slots', 'locale'], apply, name: NS }
+  },
+})

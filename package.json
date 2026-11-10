@@ -1,0 +1,58 @@
+{
+  "name": "@local/dsh-session-cleanup",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sidebar session cleanup panel: sort sessions by size, archive them, delete them into an undoable recycle bin, and clear orphaned projection cache.",
+  "icon": "./icon.svg",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mkt-agents/dsh-session-cleanup.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mkt-agents/dsh-session-cleanup/issues"
+  },
+  "homepage": "https://github.com/mkt-agents/dsh-session-cleanup#readme",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "session",
+    "cleanup",
+    "recycle-bin"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node test/host.test.mjs && node test/client.test.mjs"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
+}

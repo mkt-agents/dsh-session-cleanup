@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session cleanup",
+    "description": "Sidebar panel that lists sessions by size, archives them, deletes them into an undoable recycle bin, and clears orphaned projection cache."
+  }
+}
