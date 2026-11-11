@@ -8,8 +8,9 @@
 [![Node.js 22 or later](https://img.shields.io/badge/Node.js-22%20or%20later-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-66%20assertions-238636.svg)](#测试)
+[![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-listed-zh.svg)](https://dsh.market/?plugin=mkt-agents%2Fdsh-session-cleanup)
 
-[功能](#功能) · [为什么需要](#为什么需要) · [安全模型](#安全模型) · [安装](#安装) · [使用](#使用) · [Host 路由](#host-路由) · [目录结构](#目录结构) · [测试](#测试) · [FAQ](#faq) · [English](#english)
+[功能](#功能) · [为什么需要](#为什么需要) · [安全模型](#安全模型) · [安装](#安装) · [配置](#配置) · [使用](#使用) · [Host 路由](#host-路由) · [目录结构](#目录结构) · [测试](#测试) · [FAQ](#faq) · [English](#english)
 
 </div>
 
@@ -47,7 +48,18 @@ DSH 没有"删除会话"这个能力。移除一个 Workspace 注册项是**故�
 
 ## 安装
 
-把插件目录放进 DSH profile 的插件目录，或作为 bundle 安装。bundle patch 是 `cordis.patch.yml`：
+### 方式一：克隆后装进 profile（推荐）
+
+```bash
+git clone https://github.com/mkt-agents/dsh-session-cleanup.git
+dsh plugin --profile web add ./dsh-session-cleanup
+```
+
+`--profile` 换成你自己的 profile 名（默认 `web`）。命令会把它写进该 profile 的 `dsh.profile.bundles`，装完**重启 harness**，左侧栏出现「会话清理」入口。
+
+### 方式二：作为 bundle patch 手工挂载
+
+把插件目录放进 profile 的插件目录后，在 bundle patch 里加一段 `cordis.patch.yml`：
 
 ```yaml
 - insert:
@@ -57,9 +69,21 @@ DSH 没有"删除会话"这个能力。移除一个 Workspace 注册项是**故�
       config: {}
 ```
 
-`package.json` 把 Client 半边声明为立即注入的 Web client，依赖 `react`、`@deepseek-ai/dsh-client-runtime`、`@deepseek-ai/dsh-client-locale`、`@deepseek-ai/dsh-client-ui-slots`。
+## 配置
 
-`DSH_HOME` 默认 `%USERPROFILE%\.dsh`（Windows）/ `$HOME/.dsh`（其他）。
+**默认零配置**：不需要任何密钥、环境变量或模型账号，装完即用。可调的只有 patch 里的两项：
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `inject` | `[webServer]` | Host 半边需要的宿主服务；去掉就只剩 Client 半边 |
+| `config` | `{}` | 目前没有必填项，留空即可 |
+
+运行期约定：
+
+- `DSH_HOME` 默认 `%USERPROFILE%\.dsh`（Windows）/ `$HOME/.dsh`（其他）；换目录只影响会话与回收站的定位。
+- 回收站目录：`$DSH_HOME/backups/session-cleanup-<YYYYMMDD-HHmmss-mmm>/`，同级 `manifest.json` 记录批次、会话 id、cwd 分组、标题、体积和删除时间。
+- Host 路由只在同源下可用（`/dsh-session-cleanup/state`、`/dsh-session-cleanup/action`），不监听公网、不需要单独端口。
+- `package.json` 把 Client 半边声明为立即注入的 Web client，依赖 `react`、`@deepseek-ai/dsh-client-runtime`、`@deepseek-ai/dsh-client-locale`、`@deepseek-ai/dsh-client-ui-slots`。
 
 ## 使用
 
@@ -127,6 +151,15 @@ npm test
 ## English
 
 A DeepSeek Harness (DSH) Web plugin that adds a **session cleanup** panel to the sidebar: list sessions by size, archive them, delete them into an **undoable recycle bin**, and clear orphaned projection cache.
+
+### Installation (English)
+
+```bash
+git clone https://github.com/mkt-agents/dsh-session-cleanup.git
+dsh plugin --profile web add ./dsh-session-cleanup
+```
+
+Restart the harness afterwards — a **Session Cleanup** entry shows up in the sidebar. Pick your own profile name if it is not `web`. No API key, no environment variable, no extra configuration.
 
 DSH has no session-delete capability (removing a Workspace registration deliberately leaves session histories in place). This plugin owns the missing operations.
 
