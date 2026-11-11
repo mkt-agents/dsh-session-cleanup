@@ -48,16 +48,22 @@ DSH 没有"删除会话"这个能力。移除一个 Workspace 注册项是**故�
 
 ## 安装
 
-### 方式一：克隆后装进 profile（推荐）
+### 方式一：一条命令装 GitHub 仓库（推荐）
+
+```bash
+dsh plugin --profile web add https://github.com/mkt-agents/dsh-session-cleanup
+```
+
+`--profile` 换成你自己的 profile 名（默认 `web`）。命令会把它写进该 profile 的 `dsh.profile.bundles`，装完**重启 harness**，左侧栏出现「会话清理」入口。
+
+### 方式二：克隆到本地再装（要改代码时用）
 
 ```bash
 git clone https://github.com/mkt-agents/dsh-session-cleanup.git
 dsh plugin --profile web add ./dsh-session-cleanup
 ```
 
-`--profile` 换成你自己的 profile 名（默认 `web`）。命令会把它写进该 profile 的 `dsh.profile.bundles`，装完**重启 harness**，左侧栏出现「会话清理」入口。
-
-### 方式二：作为 bundle patch 手工挂载
+### 方式三：作为 bundle patch 手工挂载
 
 把插件目录放进 profile 的插件目录后，在 bundle patch 里加一段 `cordis.patch.yml`：
 
@@ -155,8 +161,7 @@ A DeepSeek Harness (DSH) Web plugin that adds a **session cleanup** panel to the
 ### Installation (English)
 
 ```bash
-git clone https://github.com/mkt-agents/dsh-session-cleanup.git
-dsh plugin --profile web add ./dsh-session-cleanup
+dsh plugin --profile web add https://github.com/mkt-agents/dsh-session-cleanup
 ```
 
 Restart the harness afterwards — a **Session Cleanup** entry shows up in the sidebar. Pick your own profile name if it is not `web`. No API key, no environment variable, no extra configuration.
