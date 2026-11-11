@@ -62,6 +62,7 @@ window.__ModuleLoader__.load({
       'panel.trash.title': 'Recycle bin',
       'panel.trash.subtitle': 'Deleted sessions stay here until you purge them.',
       'panel.trash.batch': '{count} session(s) · {size} · {time}',
+      'panel.trash.batchMeta': '{count} session(s) · {size}',
       'panel.trash.restore': 'Restore',
       'panel.trash.purge': 'Purge',
       'panel.trash.restoreAll': 'Restore batch',
@@ -85,6 +86,9 @@ window.__ModuleLoader__.load({
       'panel.cache.action': 'Delete {count} file(s)',
       'panel.cache.done': 'Removed {count} file(s), freed {size}.',
       'panel.cache.unavailable': 'Session storage is unavailable, so orphan detection is disabled.',
+      'panel.nav.workspaces': 'Workspaces',
+      'panel.nav.emptyCache': 'No orphaned cache files.',
+      'panel.nav.emptyArchived': 'No archived sessions.',
     }
 
     const ZH = {
@@ -140,6 +144,7 @@ window.__ModuleLoader__.load({
       'panel.trash.title': '回收站',
       'panel.trash.subtitle': '删除的会话先放在这里，直到你彻底清除。',
       'panel.trash.batch': '{count} 个会话 · {size} · {time}',
+      'panel.trash.batchMeta': '{count} 个会话 · {size}',
       'panel.trash.restore': '还原',
       'panel.trash.purge': '清除',
       'panel.trash.restoreAll': '整批还原',
@@ -163,6 +168,9 @@ window.__ModuleLoader__.load({
       'panel.cache.action': '删除这 {count} 个文件',
       'panel.cache.done': '已删除 {count} 个文件，释放 {size}。',
       'panel.cache.unavailable': '会话存储不可用，已停用孤立缓存检测。',
+      'panel.nav.workspaces': '工作区',
+      'panel.nav.emptyCache': '没有孤立缓存。',
+      'panel.nav.emptyArchived': '没有已归档会话。',
     }
 
     // Surface tokens: the host's own management-list contract is a fill plus a
@@ -172,13 +180,13 @@ window.__ModuleLoader__.load({
     // boundary at all. Every surface therefore pairs a fill with a stroke.
     const CSS = [
       '.dshsc-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:13px;--dshsc-row-selected-bg:var(--dsw-alias-bg-multi-select);--dshsc-row-selected-bar:var(--dsw-alias-state-business-primary);}',
-      '.dshsc-head{display:flex;flex-direction:column;gap:8px;padding:14px 20px 10px;background:var(--dsw-alias-bg-base);border-bottom:1px solid var(--dsw-alias-border-l1);}',
+      '.dshsc-head{display:flex;flex-direction:column;gap:6px;padding:12px 20px 8px;background:var(--dsw-alias-bg-base);border-bottom:1px solid var(--dsw-alias-border-l1);}',
       '.dshsc-headRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}',
       '.dshsc-h1{margin:0;font-size:16px;font-weight:600;line-height:24px;letter-spacing:-.01em;}',
       '.dshsc-metaRow{display:flex;align-items:center;gap:6px 12px;min-width:0;flex-wrap:wrap;}',
       '.dshsc-sub{margin:0;flex:1 1 200px;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '.dshsc-spacer{flex:1;}',
-      '.dshsc-toolbar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:9px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);flex-wrap:wrap;}',
+      '.dshsc-toolbar{display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;}',
       '.dshsc-toolbarLabel{display:inline-flex;align-items:center;gap:6px;padding-left:2px;color:var(--dsw-alias-label-secondary);font-size:12px;cursor:pointer;user-select:none;}',
       '.dshsc-search{flex:1;min-width:150px;max-width:300px;height:25px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;}',
       '.dshsc-search:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;}',
@@ -186,7 +194,22 @@ window.__ModuleLoader__.load({
       '.dshsc-stats{display:flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;}',
       '.dshsc-stat{padding:0 6px;border-radius:999px;background:var(--dsw-alias-bg-module-platform);white-space:nowrap;font-variant-numeric:tabular-nums;}',
       '.dshsc-statWarn{color:var(--dsw-alias-state-warn-label);}',
-      '.dshsc-body{flex:1;min-height:0;overflow:auto;padding:12px 20px 20px;}',
+      '.dshsc-split{display:flex;flex:1;min-height:0;}',
+      '.dshsc-nav{flex:none;width:208px;min-width:0;display:flex;flex-direction:column;gap:2px;padding:8px 8px 16px;overflow:auto;border-right:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);}',
+      '.dshsc-navSection{padding:8px 8px 4px;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);}',
+      '.dshsc-navItem{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;text-align:left;cursor:pointer;transition:background .12s;}',
+      '.dshsc-navItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);}',
+      '.dshsc-navItem:disabled{opacity:.5;cursor:not-allowed;}',
+      '.dshsc-navItem:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;}',
+      '.dshsc-navItemActive,.dshsc-navItemActive:hover:not(:disabled){background:var(--dshsc-row-selected-bg);box-shadow:inset 2px 0 0 var(--dshsc-row-selected-bar);}',
+      '.dshsc-navMain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}',
+      '.dshsc-navLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px;}',
+      '.dshsc-navMeta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:14px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;}',
+      '.dshsc-navWarn .dshsc-navMeta,.dshsc-navWarn .dshsc-pill{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-primary);}',
+      '.dshsc-navDivider{height:1px;margin:6px 8px;background:var(--dsw-alias-border-l2);}',
+      '.dshsc-pane{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}',
+      '.dshsc-paneHead{flex:none;display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--dsw-alias-bg-base);border-bottom:1px solid var(--dsw-alias-border-l1);}',
+      '.dshsc-paneBody{flex:1;min-height:0;overflow:auto;padding:10px 16px 20px;}',
       '.dshsc-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;}',
       '.dshsc-btn:hover:not(:disabled){border-color:var(--dsw-alias-border-l4);background:var(--dsw-alias-interactive-bg-hover);}',
       '.dshsc-btn:disabled{opacity:.4;cursor:not-allowed;}',
@@ -198,14 +221,15 @@ window.__ModuleLoader__.load({
       '.dshsc-btnDanger:hover:not(:disabled){border-color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover-danger);}',
       '.dshsc-btnSolidDanger{color:var(--dsw-alias-label-primary-inverted);background:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);font-weight:600;}',
       '.dshsc-btnSolidDanger:hover:not(:disabled){background:var(--dsw-alias-state-error-secondary);border-color:var(--dsw-alias-state-error-secondary);}',
-      '.dshsc-card{margin:0 0 10px;border:1px solid var(--dsw-alias-settings-card-stroke);border-radius:10px;background:var(--dsw-alias-bg-base);overflow:hidden;}',
+      '.dshsc-card{margin:0 0 8px;border:1px solid var(--dsw-alias-settings-card-stroke);border-radius:10px;background:var(--dsw-alias-bg-base);overflow:hidden;}',
       '.dshsc-cardLoose{border-style:dashed;}',
-      '.dshsc-cardHead{display:flex;align-items:center;gap:8px;min-height:34px;padding:0 10px 0 6px;background:var(--dsw-alias-bg-module-platform);border-bottom:1px solid var(--dsw-alias-settings-card-stroke);}',
+      '.dshsc-cardHead{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 10px 0 6px;background:var(--dsw-alias-bg-module-platform);border-bottom:1px solid var(--dsw-alias-settings-card-stroke);}',
       '.dshsc-cardHeadEmpty{border-bottom:none;}',
       '.dshsc-chevron{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;border-radius:5px;padding:0;transition:background .12s,color .12s;}',
       '.dshsc-chevron:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
       '.dshsc-cardTitle{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34%;}',
       '.dshsc-cardPath{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44%;font-variant-numeric:tabular-nums;}',
+      '.dshsc-countText{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;}',
       '.dshsc-pill{flex:none;min-width:20px;padding:0 6px;border-radius:999px;background:var(--dsw-alias-settings-card-fill);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:17px;text-align:center;border:1px solid var(--dsw-alias-border-l3);font-variant-numeric:tabular-nums;}',
       '.dshsc-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--dsw-alias-border-l2);transition:background .12s,box-shadow .12s;}',
       '.dshsc-rowFirst{border-top:none;}',
@@ -235,6 +259,16 @@ window.__ModuleLoader__.load({
       '.dshsc-dockInfo{font-size:12px;font-weight:600;}',
       '.dshsc-dockHint{font-size:11px;color:var(--dsw-alias-label-tertiary);}',
       '.dshsc-confirmText{font-size:11px;color:var(--dsw-alias-state-error-primary);font-weight:500;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '@media (max-width:760px){',
+      '.dshsc-split{flex-direction:column;}',
+      '.dshsc-nav{width:100%;flex-direction:row;flex-wrap:wrap;gap:6px;padding:8px 12px;overflow:visible;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l2);}',
+      '.dshsc-navSection,.dshsc-navDivider{display:none;}',
+      '.dshsc-navItem{width:auto;padding:5px 10px;border-radius:999px;border-color:var(--dsw-alias-border-l3);}',
+      '.dshsc-navItemActive{border-color:var(--dsw-alias-state-business-primary);box-shadow:none;}',
+      '.dshsc-navMeta{display:none;}',
+      '.dshsc-paneHead{padding:8px 12px;}',
+      '.dshsc-paneBody{padding:10px 12px 16px;}',
+      '}',
     ].join('')
 
     /**
@@ -414,6 +448,35 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * One entry in the left navigation rail.
+     * @param props - label, optional meta line, count, and active/warn state.
+     * @returns the nav button element.
+     */
+    function NavItem({ label, meta, count, title, active, warn, disabled, onClick }) {
+      return h(
+        'button',
+        {
+          type: 'button',
+          role: 'tab',
+          'aria-current': active === true,
+          'aria-selected': active === true,
+          className:
+            'dshsc-navItem' + (active === true ? ' dshsc-navItemActive' : '') + (warn === true ? ' dshsc-navWarn' : ''),
+          title: title ?? label,
+          disabled,
+          onClick,
+        },
+        h(
+          'span',
+          { className: 'dshsc-navMain' },
+          h('span', { className: 'dshsc-navLabel' }, label),
+          meta === undefined || meta === '' ? null : h('span', { className: 'dshsc-navMeta' }, meta),
+        ),
+        h('span', { className: 'dshsc-pill' }, String(count ?? 0)),
+      )
+    }
+
+    /**
      * One row's inline actions, including the two-step delete confirmation.
      * @param props - Row actions.
      * @returns the action element.
@@ -427,12 +490,12 @@ window.__ModuleLoader__.load({
         archived
           ? h(
               'button',
-              { type: 'button', className: 'dshsc-btn dshsc-btnSm', disabled: busy, onClick: () => onUnarchive(row.id) },
+              { type: 'button', className: 'dshsc-btn dshsc-btnSm dshsc-btnGhost', disabled: busy, onClick: () => onUnarchive(row.id) },
               t('panel.action.unarchive'),
             )
           : h(
               'button',
-              { type: 'button', className: 'dshsc-btn dshsc-btnSm', disabled: busy, onClick: () => onArchive(row.id) },
+              { type: 'button', className: 'dshsc-btn dshsc-btnSm dshsc-btnGhost', disabled: busy, onClick: () => onArchive(row.id) },
               t('panel.action.archive'),
             ),
         confirming
@@ -458,7 +521,7 @@ window.__ModuleLoader__.load({
               'button',
               {
                 type: 'button',
-                className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
+                className: 'dshsc-btn dshsc-btnSm dshsc-btnGhost dshsc-btnDanger',
                 disabled: busy || !canDelete,
                 title: canDelete ? undefined : t('panel.hint.live'),
                 onClick: () => onDelete(row.id),
@@ -480,6 +543,7 @@ window.__ModuleLoader__.load({
       pending,
       confirming,
       collapsed,
+      compact,
       onToggleCollapse,
       onToggleRow,
       onToggleGroup,
@@ -498,6 +562,30 @@ window.__ModuleLoader__.load({
       const headClass = 'dshsc-cardHead' + (collapsed ? ' dshsc-cardHeadEmpty' : '')
       const groupBytes = group.rows.reduce((sum, row) => sum + (row.sizeBytes ?? 0), 0)
       const busy = pending.length > 0
+      // A single-workspace view already names the workspace in the rail, so the
+      // card head only repeats it lightly: no path chip, no count pill.
+      const headBody =
+        compact === true
+          ? [
+              h(
+                'span',
+                { key: 'title', className: 'dshsc-cardTitle', title: group.path || group.title },
+                group.title || t('panel.ungrouped'),
+              ),
+              h('span', { key: 'count', className: 'dshsc-countText' }, t('panel.workspaceCount', { count: ids.length })),
+            ]
+          : [
+              h(
+                'span',
+                { key: 'title', className: 'dshsc-cardTitle', title: group.title },
+                group.title || t('panel.ungrouped'),
+              ),
+              h(
+                'span',
+                { key: 'path', className: 'dshsc-cardPath', title: group.path },
+                group.path || (archivedGroup ? '' : t('panel.ungroupedPath')),
+              ),
+            ]
       return h(
         'section',
         { className: 'dshsc-card' + (group.workspaceId === '' ? ' dshsc-cardLoose' : '') },
@@ -522,17 +610,12 @@ window.__ModuleLoader__.load({
             label: t('panel.bulk.selectGroup'),
             onChange: () => onToggleGroup(ids, allSelected),
           }),
-          h('span', { className: 'dshsc-cardTitle', title: group.title }, group.title || t('panel.ungrouped')),
-          h(
-            'span',
-            { className: 'dshsc-cardPath', title: group.path },
-            group.path || (archivedGroup ? '' : t('panel.ungroupedPath')),
-          ),
+          ...headBody,
           h('span', { className: 'dshsc-spacer' }),
           formatBytes(groupBytes) === ''
             ? null
             : h('span', { className: 'dshsc-size' }, formatBytes(groupBytes)),
-          h('span', { className: 'dshsc-pill' }, String(group.rows.length)),
+          compact === true ? null : h('span', { className: 'dshsc-pill' }, String(group.rows.length)),
         ),
         collapsed
           ? null
@@ -570,7 +653,7 @@ window.__ModuleLoader__.load({
                     formatTime(row.updatedAt) === ''
                       ? null
                       : h('span', null, t('panel.updatedAt', { time: formatTime(row.updatedAt) })),
-                    row.cwd === '' ? null : h('span', { title: row.cwd }, '· ' + baseName(row.cwd)),
+                    compact === true || row.cwd === '' ? null : h('span', { title: row.cwd }, '· ' + baseName(row.cwd)),
                     row.running
                       ? h('span', { className: 'dshsc-badge dshsc-badgeRun' }, t('panel.badge.running'))
                       : row.live
@@ -625,6 +708,7 @@ window.__ModuleLoader__.load({
       const [notice, setNotice] = React.useState(null)
       const [query, setQuery] = React.useState('')
       const [sort, setSort] = React.useState('updated')
+      const [activeView, setActiveView] = React.useState(null)
       const [selected, setSelected] = React.useState(function () {
         return new Set()
       })
@@ -675,49 +759,93 @@ window.__ModuleLoader__.load({
 
       const comparator = React.useMemo(() => byRowOrder(pinnedSet, sort), [pinnedSet, sort])
 
+      // Left rail: one entry per workspace plus the fixed views. Counts here are
+      // global truth (never narrowed by the search box), so the rail still shows
+      // where the sessions are while a filter hides them.
+      const nav = React.useMemo(() => {
+        const workspaces = data?.workspaces ?? []
+        const activeRows = rows.filter((row) => !archivedSet.has(row.id))
+        const claimed = new Set()
+        const entries = workspaces.map((workspace) => {
+          const ids = new Set(workspace.sessionIds)
+          for (const id of ids) claimed.add(id)
+          const members = activeRows.filter((row) => ids.has(row.id))
+          return {
+            id: workspace.workspaceId,
+            name: workspace.title || workspace.path || t('panel.ungrouped'),
+            path: workspace.path,
+            count: members.length,
+            bytes: members.reduce((sum, row) => sum + (row.sizeBytes ?? 0), 0),
+            rows: members,
+          }
+        })
+        return {
+          entries,
+          stray: activeRows.filter((row) => !claimed.has(row.id)),
+          archivedRows: rows.filter((row) => archivedSet.has(row.id)),
+        }
+      }, [data, rows, archivedSet, t])
+
+      // The rail has no aggregate entry, so a fresh panel opens the first
+      // workspace that actually holds sessions (falling back to the first
+      // registered one, then to the loose/archived groups).
+      const defaultView = React.useMemo(() => {
+        if (nav.entries.length > 0) {
+          const populated = nav.entries.find((entry) => entry.count > 0)
+          return (populated ?? nav.entries[0]).id
+        }
+        if (nav.stray.length > 0) return '__ungrouped__'
+        return '__archived__'
+      }, [nav])
+
+      // `activeView` is null until the first state read resolves; rendering uses
+      // the derived view so there is never an empty first frame.
+      const currentView = activeView ?? defaultView
+
       const view = React.useMemo(() => {
         const needle = query.trim().toLowerCase()
-        const matches = (row) => {
-          if (needle === '') return true
-          const haystack = (row.title + ' ' + row.id + ' ' + row.cwd).toLowerCase()
-          return haystack.includes(needle)
-        }
-        const workspaces = data?.workspaces ?? []
-        const accounted = new Set()
-        const activeGroups = []
-        const archivedRows = []
-        for (const row of rows) if (archivedSet.has(row.id) && matches(row)) archivedRows.push(row)
-        for (const workspace of workspaces) {
-          const members = []
-          for (const id of workspace.sessionIds) {
-            accounted.add(id)
-            const row = sessionById.get(id)
-            if (row === undefined || archivedSet.has(id) || !matches(row)) continue
-            members.push(row)
-          }
-          members.sort(comparator)
-          if (members.length > 0) {
-            activeGroups.push({
-              workspaceId: workspace.workspaceId,
-              title: workspace.title,
-              path: workspace.path,
-              rows: members,
-            })
+        const matches = (row) =>
+          needle === '' || (row.title + ' ' + row.id + ' ' + row.cwd).toLowerCase().includes(needle)
+        const card = (workspaceId, title, path, members) => ({
+          workspaceId,
+          title,
+          path,
+          rows: members.filter(matches).sort(comparator),
+        })
+        const groups = []
+        let archivedGroup = null
+        if (currentView === '__archived__') {
+          const archived = card('__archived__', t('panel.section.archived'), '', nav.archivedRows)
+          if (archived.rows.length > 0) archivedGroup = archived
+        } else if (currentView === '__ungrouped__') {
+          const group = card('', '', '', nav.stray)
+          if (group.rows.length > 0) groups.push(group)
+        } else {
+          const entry = nav.entries.find((candidate) => candidate.id === currentView)
+          if (entry !== undefined) {
+            const group = card(entry.id, entry.name, entry.path, entry.rows)
+            if (group.rows.length > 0) groups.push(group)
           }
         }
-        const stray = rows.filter((row) => !accounted.has(row.id) && !archivedSet.has(row.id) && matches(row)).sort(comparator)
-        if (stray.length > 0) activeGroups.push({ workspaceId: '', title: '', path: '', rows: stray })
-        archivedRows.sort(comparator)
-        const archivedGroup =
-          archivedRows.length === 0
-            ? null
-            : { workspaceId: '__archived__', title: t('panel.section.archived'), path: '', rows: archivedRows }
-        return { activeGroups, archivedGroup }
-      }, [data, archivedSet, sessionById, comparator, query, t])
+        return { groups, archivedGroup }
+      }, [currentView, nav, query, comparator, t])
+
+      // Keep the rail selection valid after a refresh removes a workspace.
+      React.useEffect(() => {
+        if (data === null) return
+        setActiveView((current) => {
+          if (current === null) return defaultView
+          if (current === '__trash__' || current === '__archived__' || current === '__ungrouped__') return current
+          if (current === '__cache__') {
+            return data?.orphanCache?.available === false ? defaultView : current
+          }
+          return nav.entries.some((entry) => entry.id === current) ? current : defaultView
+        })
+      }, [data, nav, defaultView])
 
       const visibleIds = React.useMemo(() => {
         const ids = []
-        for (const group of view.activeGroups) for (const row of group.rows) ids.push(row.id)
+        for (const group of view.groups) for (const row of group.rows) ids.push(row.id)
         if (view.archivedGroup !== null) for (const row of view.archivedGroup.rows) ids.push(row.id)
         return ids
       }, [view])
@@ -929,25 +1057,26 @@ window.__ModuleLoader__.load({
         run('delete', deletableIds)
       }, [confirmBulk, deletableIds, run, t])
 
+      const emptyText = () => {
+        if (query.trim() !== '') return t('panel.emptyFilter', { query: query.trim() })
+        if (currentView === '__archived__') return t('panel.nav.emptyArchived')
+        return t('panel.empty')
+      }
+
       const sections = []
       if (loading && data === null) {
         sections.push(h('div', { className: 'dshsc-skeleton', key: 'loading' }, t('panel.loading')))
-      } else if (view.activeGroups.length === 0 && view.archivedGroup === null) {
-        sections.push(
-          h(
-            'div',
-            { className: 'dshsc-empty', key: 'empty' },
-            query.trim() === '' ? t('panel.empty') : t('panel.emptyFilter', { query: query.trim() }),
-          ),
-        )
+      } else if (view.groups.length === 0 && view.archivedGroup === null) {
+        sections.push(h('div', { className: 'dshsc-empty', key: 'empty' }, emptyText()))
       } else {
-        for (const group of view.activeGroups) {
+        for (const group of view.groups) {
           const key = group.workspaceId === '' ? '__ungrouped__' : group.workspaceId
           sections.push(
             h(GroupCard, {
               key,
               group,
               archivedGroup: false,
+              compact: view.groups.length === 1 && group.workspaceId !== '',
               selection,
               pending,
               confirming,
@@ -1160,17 +1289,20 @@ window.__ModuleLoader__.load({
                     h(
                       'div',
                       { className: 'dshsc-main dshsc-mainStatic' },
-                      h('span', { className: 'dshsc-title' }, batch.batch),
+                      h(
+                        'span',
+                        { className: 'dshsc-title', title: batch.batch },
+                        time === '' ? batch.batch : time,
+                      ),
                       h(
                         'span',
                         { className: 'dshsc-meta' },
                         h(
                           'span',
                           null,
-                          t('panel.trash.batch', {
+                          t('panel.trash.batchMeta', {
                             count: batch.count,
                             size: formatBytes(batch.bytes) || '0 B',
-                            time,
                           }),
                         ),
                       ),
@@ -1422,6 +1554,124 @@ window.__ModuleLoader__.load({
               pending.length > 0 ? h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.running')) : null,
             )
 
+      const cacheAvailable = data?.orphanCache?.available !== false
+      const cacheInfo = data?.orphanCache ?? { available: true, count: 0, bytes: 0 }
+      const trashBatchList = data?.trash ?? []
+      const trashCount = trashBatchList.reduce((sum, batch) => sum + batch.count, 0)
+      const strayBytes = nav.stray.reduce((sum, row) => sum + (row.sizeBytes ?? 0), 0)
+      const sessionView = currentView !== '__trash__' && currentView !== '__cache__'
+
+      const toolbar = h(
+        'div',
+        { className: 'dshsc-toolbar' },
+        h(
+          'label',
+          { className: 'dshsc-toolbarLabel' },
+          h(TriCheck, {
+            checked: allVisibleSelected,
+            indeterminate: someVisibleSelected && !allVisibleSelected,
+            disabled: visibleIds.length === 0 || pending.length > 0,
+            label: t('panel.action.selectAll'),
+            onChange: toggleAll,
+          }),
+          t('panel.action.selectAll'),
+        ),
+        h('input', {
+          type: 'search',
+          className: 'dshsc-search',
+          placeholder: t('panel.search'),
+          value: query,
+          'aria-label': t('panel.search'),
+          onChange: (event) => setQuery(event.currentTarget.value),
+        }),
+        h(
+          'select',
+          {
+            className: 'dshsc-select',
+            value: sort,
+            'aria-label': t('panel.sort.updated'),
+            onChange: (event) => setSort(event.currentTarget.value),
+          },
+          h('option', { value: 'updated' }, t('panel.sort.updated')),
+          h('option', { value: 'size' }, t('panel.sort.size')),
+          h('option', { value: 'title' }, t('panel.sort.title')),
+        ),
+        selectedIds.length > 0
+          ? h('span', { className: 'dshsc-pill' }, t('panel.bulk.selected', { count: selectedIds.length }))
+          : null,
+        h('span', { className: 'dshsc-spacer' }),
+        loading ? h('span', { className: 'dshsc-dockHint' }, t('panel.loading')) : null,
+      )
+
+      const navRail = h(
+        'nav',
+        { className: 'dshsc-nav', role: 'tablist', 'aria-label': t('panel.nav.workspaces') },
+        h('div', { className: 'dshsc-navSection' }, t('panel.nav.workspaces')),
+        ...nav.entries.map((entry) =>
+          h(NavItem, {
+            key: entry.id,
+            label: entry.name,
+            meta: formatBytes(entry.bytes) || '0 B',
+            count: entry.count,
+            title: entry.path || entry.name,
+            active: currentView === entry.id,
+            onClick: () => setActiveView(entry.id),
+          }),
+        ),
+        nav.stray.length === 0
+          ? null
+          : h(NavItem, {
+              key: '__ungrouped__',
+              label: t('panel.ungrouped'),
+              meta: formatBytes(strayBytes) || '0 B',
+              count: nav.stray.length,
+              active: currentView === '__ungrouped__',
+              onClick: () => setActiveView('__ungrouped__'),
+            }),
+        h(NavItem, {
+          key: '__archived__',
+          label: t('panel.section.archived'),
+          count: nav.archivedRows.length,
+          active: currentView === '__archived__',
+          onClick: () => setActiveView('__archived__'),
+        }),
+        h('div', { className: 'dshsc-navDivider', key: 'divider' }),
+        h(NavItem, {
+          key: '__trash__',
+          label: t('panel.trash.title'),
+          count: trashCount,
+          warn: trashCount > 0,
+          active: currentView === '__trash__',
+          onClick: () => setActiveView('__trash__'),
+        }),
+        cacheAvailable
+          ? h(NavItem, {
+              key: '__cache__',
+              label: t('panel.cache.title'),
+              count: cacheInfo.count,
+              warn: cacheInfo.count > 0,
+              active: currentView === '__cache__',
+              onClick: () => setActiveView('__cache__'),
+            })
+          : null,
+      )
+
+      const paneContent = []
+      if (currentView === '__trash__') {
+        paneContent.push(
+          trashSection ??
+            h('div', { className: 'dshsc-empty', key: 'empty-trash' }, t('panel.trash.empty')),
+        )
+      } else if (currentView === '__cache__') {
+        paneContent.push(
+          cacheSection ??
+            h('div', { className: 'dshsc-empty', key: 'empty-cache' }, t('panel.nav.emptyCache')),
+        )
+      } else {
+        for (const section of sections) paneContent.push(section)
+        if (currentView === '__archived__' && orphanSection !== null) paneContent.push(orphanSection)
+      }
+
       return h(
         'div',
         { className: 'dshsc-root' },
@@ -1433,7 +1683,6 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'dshsc-headRow' },
             h('h1', { className: 'dshsc-h1' }, t('panel.title')),
-            h('span', { className: 'dshsc-pill' }, String(visibleIds.length)),
             h('span', { className: 'dshsc-spacer' }),
             h(
               'button',
@@ -1446,47 +1695,6 @@ window.__ModuleLoader__.load({
             { className: 'dshsc-metaRow' },
             h('p', { className: 'dshsc-sub' }, t('panel.subtitle')),
             statsRow,
-          ),
-          h(
-            'div',
-            { className: 'dshsc-toolbar' },
-            h(
-              'label',
-              { className: 'dshsc-toolbarLabel' },
-              h(TriCheck, {
-                checked: allVisibleSelected,
-                indeterminate: someVisibleSelected && !allVisibleSelected,
-                disabled: visibleIds.length === 0 || pending.length > 0,
-                label: t('panel.action.selectAll'),
-                onChange: toggleAll,
-              }),
-              t('panel.action.selectAll'),
-            ),
-            h('input', {
-              type: 'search',
-              className: 'dshsc-search',
-              placeholder: t('panel.search'),
-              value: query,
-              'aria-label': t('panel.search'),
-              onChange: (event) => setQuery(event.currentTarget.value),
-            }),
-            h(
-              'select',
-              {
-                className: 'dshsc-select',
-                value: sort,
-                'aria-label': t('panel.sort.updated'),
-                onChange: (event) => setSort(event.currentTarget.value),
-              },
-              h('option', { value: 'updated' }, t('panel.sort.updated')),
-              h('option', { value: 'size' }, t('panel.sort.size')),
-              h('option', { value: 'title' }, t('panel.sort.title')),
-            ),
-            selectedIds.length > 0
-              ? h('span', { className: 'dshsc-pill' }, t('panel.bulk.selected', { count: selectedIds.length }))
-              : null,
-            h('span', { className: 'dshsc-spacer' }),
-            loading ? h('span', { className: 'dshsc-dockHint' }, t('panel.loading')) : null,
           ),
         ),
         error === null
@@ -1505,7 +1713,17 @@ window.__ModuleLoader__.load({
               { className: 'dshsc-notice' + (notice.kind === 'error' ? ' dshsc-noticeError' : '') },
               notice.text,
             ),
-        h('div', { className: 'dshsc-body' }, ...sections, orphanSection, cacheSection, trashSection),
+        h(
+          'div',
+          { className: 'dshsc-split' },
+          navRail,
+          h(
+            'div',
+            { className: 'dshsc-pane' },
+            sessionView ? h('div', { className: 'dshsc-paneHead' }, toolbar) : null,
+            h('div', { className: 'dshsc-paneBody' }, ...paneContent),
+          ),
+        ),
         dock,
       )
     }

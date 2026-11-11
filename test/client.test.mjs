@@ -253,25 +253,91 @@ if (typeof Icon !== 'function') throw new Error('sidebar icon not registered')
 await settle()
 let text = textOf(tree)
 
+/**
+ * Find one rail entry by its visible label.
+ * @param label - Exact nav label text.
+ * @returns the nav button node, or undefined.
+ */
+function navItem(label) {
+  const tabs = find(tree, (node) => node.props?.role === 'tab')
+  return tabs.find((node) => {
+    const main = (node.children ?? []).find((child) => child && child.props?.className === 'dshsc-navMain')
+    if (main === undefined) return false
+    const labelNode = (main.children ?? []).find((child) => child && child.props?.className === 'dshsc-navLabel')
+    return labelNode !== undefined && textOf(labelNode) === label
+  })
+}
+
+/**
+ * Click one rail entry and let the panel settle.
+ * @param label - Exact nav label text.
+ */
+async function clickNav(label) {
+  const node = navItem(label)
+  if (node === undefined) throw new Error('nav entry not found: ' + label)
+  node.props.onClick()
+  await settle()
+}
+
+/**
+ * Read the pill count rendered inside one rail entry.
+ * @param label - Exact nav label text.
+ * @returns the count text, or undefined.
+ */
+function navCount(label) {
+  const node = navItem(label)
+  if (node === undefined) return undefined
+  const pill = (node.children ?? []).find((child) => child && child.props?.className === 'dshsc-pill')
+  return pill === undefined ? undefined : textOf(pill)
+}
+
 check('renders title', text.includes('会话清理'), text.slice(0, 80))
 check('state fetched', requests.some((entry) => entry.url.endsWith('/dsh-session-cleanup/state')))
 check('stats show size', /12(\.\d+)? MB/.test(text), text.slice(0, 300))
-check('orphan cache section', text.includes('孤立投影缓存'), text.slice(0, 600))
-check('recycle bin section', text.includes('回收站'))
-check('trash item title kept', text.includes('Deleted A'))
+check('split layout present', find(tree, (node) => node.props?.className === 'dshsc-split').length === 1)
+check('left rail present', find(tree, (node) => node.props?.className === 'dshsc-nav').length === 1)
+check('right pane present', find(tree, (node) => node.props?.className === 'dshsc-pane').length === 1)
+check('rail lists workspaces', navItem('alpha') !== undefined && navItem('beta') !== undefined)
+check('rail lists archived and trash', navItem('已归档') !== undefined && navItem('回收站') !== undefined)
+check('rail lists orphan cache', navItem('孤立投影缓存') !== undefined)
+check('rail has no aggregate entry', navItem('全部会话') === undefined)
+check('default view opens first populated workspace', navItem('alpha')?.props['aria-current'] === true)
+check('rail counts workspace sessions', navCount('alpha') === '2' && navCount('beta') === '1', [navCount('alpha'), navCount('beta')])
+check('rail counts archived', navCount('已归档') === '1', navCount('已归档'))
+check('rail counts trash', navCount('回收站') === '2', navCount('回收站'))
 check('search input rendered', find(tree, (node) => node.props?.type === 'search').length === 1)
 check('sort select rendered', find(tree, (node) => node.props?.className === 'dshsc-select').length === 1)
-check('subagent badge', text.includes('子会话'))
 check('live badge', text.includes('运行中'))
 check('pinned badge', text.includes('已置顶'))
 check('search placeholder', find(tree, (node) => node.props?.placeholder === '搜索标题、ID 或路径').length === 1)
 check('meta row merges subtitle and stats', find(tree, (node) => node.props?.className === 'dshsc-metaRow').length === 1)
-check('size column rendered per row', find(tree, (node) => typeof node.props?.className === 'string' && node.props.className.includes('dshsc-sizeCell')).length >= 4)
-check('card path rendered as plain text', find(tree, (node) => node.props?.className === 'dshsc-cardPath').length >= 2)
+check('size column rendered per row', find(tree, (node) => typeof node.props?.className === 'string' && node.props.className.includes('dshsc-sizeCell')).length >= 2)
+check('compact head shows count text', find(tree, (node) => node.props?.className === 'dshsc-countText').length === 1)
+check('compact head drops path chip', find(tree, (node) => node.props?.className === 'dshsc-cardPath').length === 0)
+check('default view hides archived rows', !text.includes('Archived one'), text.slice(0, 400))
+check('default view hides other workspaces', !text.includes('Stray'), text.slice(0, 400))
 
 const rowCount = find(tree, (node) => typeof node.props?.className === 'string' && node.props.className.includes('dshsc-row')).length
-check('row count sane', rowCount >= 6, rowCount)
+check('row count sane', rowCount === 2, rowCount)
 
+// Workspace switch narrows the pane to that workspace only.
+await clickNav('beta')
+text = textOf(tree)
+check('workspace switch activates entry', navItem('beta')?.props['aria-current'] === true)
+check('workspace switch drops other workspaces', !text.includes('Heavy session') && !text.includes('Stray'), text.slice(0, 300))
+check('workspace switch deactivates previous entry', navItem('alpha')?.props['aria-current'] === false)
+check('subagent badge', text.includes('子会话'), text.slice(0, 300))
+
+// Archived view shows archived rows and the stale-archive cleanup card.
+await clickNav('已归档')
+text = textOf(tree)
+check('archived view shows archived row', text.includes('Archived one'), text.slice(0, 300))
+check('archived view offers restore', find(tree, byText('恢复')).length === 1)
+check('archived view shows stale-archive card', text.includes('清理这 1 条'), text.slice(0, 600))
+check('archived head keeps path slot', find(tree, (node) => node.props?.className === 'dshsc-cardPath').length === 1)
+
+await clickNav('alpha')
+text = textOf(tree)
 const searchNode = find(tree, (node) => node.props?.type === 'search')[0]
 searchNode.props.onChange({ currentTarget: { value: 'heavy' } })
 await settle()
@@ -288,7 +354,7 @@ const titles = find(tree, (node) => typeof node.props?.className === 'string' &&
 check('size sort puts heavy first', textOf(titles[0]).includes('Heavy session'), titles.slice(0, 3).map(textOf))
 
 const groupChecks = find(tree, (node) => node.props?.['aria-label'] === '选择该分组内的会话')
-check('group checkbox present', groupChecks.length >= 2, groupChecks.length)
+check('group checkbox present', groupChecks.length >= 1, groupChecks.length)
 groupChecks[0].props.onChange()
 await settle()
 text = textOf(tree)
@@ -321,6 +387,13 @@ const deleteRequest = requests.find((entry) => entry.init?.body?.includes('"op":
 check('delete posted', deleteRequest !== undefined, requests.map((entry) => entry.init?.body).filter(Boolean))
 check('delete carried labels', deleteRequest !== undefined && deleteRequest.init.body.includes('"labels":{"s2":"Pinned small"}'), deleteRequest?.init?.body)
 
+// Recycle bin owns its own pane.
+await clickNav('回收站')
+text = textOf(tree)
+check('trash pane lists batch items', text.includes('Deleted A'), text.slice(0, 300))
+check('trash head shows time instead of folder name', !text.includes('session-cleanup-2026'), text.slice(0, 300))
+check('trash pane hides the session toolbar', find(tree, (node) => node.props?.className === 'dshsc-paneHead').length === 0)
+
 const purgeButtons = find(tree, byText('清除'))
 check('per-item purge button', purgeButtons.length === 2, purgeButtons.length)
 purgeButtons[0].props.onClick()
@@ -340,6 +413,8 @@ const restoreRequest = requests.find((entry) => entry.init?.body?.includes('"op"
 check('per-item restore posted', restoreRequest !== undefined, restoreRequest?.init?.body)
 check('restore scoped to one session', restoreRequest !== undefined && restoreRequest.init.body.includes('"sessionIds":["d1"]'), restoreRequest?.init?.body)
 
+// Orphan cache has its own pane too.
+await clickNav('孤立投影缓存')
 const cacheButton = find(tree, byTextPrefix('删除这'))
 check('orphan cache button', cacheButton.length === 1, cacheButton.length)
 cacheButton[0].props.onClick()
