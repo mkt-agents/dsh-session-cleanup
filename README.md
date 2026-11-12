@@ -7,7 +7,7 @@
 [![DSH Web Plugin](https://img.shields.io/badge/DSH-Web%20Plugin-0f766e.svg)](https://github.com/mkt-agents/dsh-session-cleanup)
 [![Node.js 22 or later](https://img.shields.io/badge/Node.js-22%20or%20later-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-66%20assertions-238636.svg)](#测试)
+[![Tests](https://img.shields.io/badge/tests-224%20official%20+%2064%20independent-238636.svg)](#测试)
 [![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-listed-zh.svg)](https://dsh.market/?plugin=mkt-agents%2Fdsh-session-cleanup)
 
 [功能](#功能) · [为什么需要](#为什么需要) · [安全模型](#安全模型) · [安装](#安装) · [配置](#配置) · [使用](#使用) · [Host 路由](#host-路由) · [目录结构](#目录结构) · [测试](#测试) · [FAQ](#faq) · [English](#english)
@@ -20,11 +20,14 @@
 
 - **按体积排序的会话列表** —— 左栏按工作区导航，右栏列出该工作区会话，显示字节体积、最后更新时间、运行中/活跃徽章，一眼找出最占空间的会话。
 - **归档 / 取消归档** —— 走 `workspaceRegistry.archiveSession`，归档会话从活动列表移出但**一个字节都不动**。
+- **会话记录预览** —— 点会话标题在右栏打开只读记录：最近 12 条用户/助手文本 + 记录数、体积、更新时间，确认内容之后再归档或删除。
 - **可撤销删除** —— 删除会把会话目录**和**它的投影缓存文件一起 **移动** 到 `$DSH_HOME/backups/session-cleanup-<stamp>/`，并写一份 manifest。没有东西被销毁。
-- **整批或单条还原** —— 撤销一整个删除动作，也可以只捞回其中某一条会话。
-- **显式 purge** —— 唯一真正删除字节的操作，必须按批次或按单条显式请求。
+- **会话行右键删除** —— 侧边栏会话的「…」菜单（`置顶 / 重命名 / 分叉 / 复制 ID / 在文件夹显示 / 归档`）末尾多一项 **删除会话**，与面板走同一条可撤销路径；第一次点击要求确认，再点一次才移入回收站，成功或失败都在菜单下方给出提示。
+- **回收站勾选还原 / 永久删除** —— 每条会话可勾选，每批可全选或半选；统一用「还原所选」「永久删除所选」。按批全选等于原来的整批操作。永久删除会确认实际会话数且不可恢复，取消不发请求。清空回收站仍独立，并分开报告批次与会话数。
+- **显式 purge** —— 唯一真正删除字节的操作，必须按所选会话或按单条显式请求。
 - **清空回收站** —— 一次性丢掉所有 `session-cleanup-*` 批次。
-- **孤立缓存清理** —— 删除 `session_projcache/sessions/*.json` 中会话日志已不存在的文件，并报告释放的字节数。
+- **删除后两侧同步** —— 删除成功后 Host 广播 `api-session/removed`，面板也刷新客户端会话列表，侧边栏不会再留一条“已经不存在的会话”。
+- **孤立缓存清理** —— 删除 `session_projcache/sessions/*.json` 中会话日志已不存在的文件，需二次确认（此操作不可撤销），并报告释放的字节数。
 - **失效归档清理** —— 丢掉会话日志已消失的归档/固定（archive/pin）条目。
 
 ## 为什么需要
@@ -44,7 +47,9 @@ DSH 没有"删除会话"这个能力。移除一个 Workspace 注册项是**故�
 | 跨卷移动 | 回退到 copy-then-remove（`EXDEV`） |
 | 跨站写入 | 两条路由都校验 `sec-fetch-site` / `Origin` 对 `Host` |
 | 请求体 | 上限 64 KiB；label 截断到 200 字符 |
-| 路径穿越 | 批次名必须匹配 `session-cleanup-<stamp>`，相对路径越界即拒绝 |
+| 路径穿越 | 批次名必须匹配 `session-cleanup-<stamp>`；还原/按条清除还会校验 manifest 里的目录名，相对路径越界即拒绝 |
+| 共享批次回滚 | 批量删除中后一条失败时，只回滚该条，不会删掉批次里已经成功的会话 |
+| manifest 损坏或写入失败 | 先回滚该条；若目录仍留在回收站，会扫描会话树并允许还原 |
 
 ## 安装
 
@@ -88,7 +93,7 @@ dsh plugin --profile web add ./dsh-session-cleanup
 
 - `DSH_HOME` 默认 `%USERPROFILE%\.dsh`（Windows）/ `$HOME/.dsh`（其他）；换目录只影响会话与回收站的定位。
 - 回收站目录：`$DSH_HOME/backups/session-cleanup-<YYYYMMDD-HHmmss-mmm>/`，同级 `manifest.json` 记录批次、会话 id、cwd 分组、标题、体积和删除时间。
-- Host 路由只在同源下可用（`/dsh-session-cleanup/state`、`/dsh-session-cleanup/action`），不监听公网、不需要单独端口。
+- Host 路由只在同源下可用（`/dsh-session-cleanup/state`、`/dsh-session-cleanup/preview`、`/dsh-session-cleanup/action`），不监听公网、不需要单独端口。
 - `package.json` 把 Client 半边声明为立即注入的 Web client，依赖 `react`、`@deepseek-ai/dsh-client-runtime`、`@deepseek-ai/dsh-client-locale`、`@deepseek-ai/dsh-client-ui-slots`。
 
 ## 使用
@@ -97,8 +102,10 @@ dsh plugin --profile web add ./dsh-session-cleanup
 2. 面板是**左导航 + 右列表**：左栏按工作区切换（含 **未分组**、**已归档**、**回收站**、**孤立缓存** 四个固定入口），右栏只显示当前工作区的会话，可按体积 / 更新时间 / 标题排序，支持搜索标题、id、路径。
 3. 勾选会话后：
    - **归档** —— 移出活动列表，字节不动。
-   - **删除** —— 二次确认后移入回收站，可整批或单条还原。
-4. 回收站里 **purge** 才是真删；**清空回收站** 一次清掉所有批次。
+   - **删除** —— 二次确认后移入回收站，可在回收站勾选后还原或永久删除。侧栏菜单删除同样要确认后再移入回收站。
+   - 点**标题**（不是勾选框）打开记录预览，只看不选；预览里也能归档/取消归档/删除。
+   - 切换左侧工作区或固定入口会清空勾选，避免对看不见的会话做批量操作；同一视图里的搜索筛选会保留勾选，并提示有多少项被滤出。
+4. 回收站可勾选会话或按批全选，用 **还原所选** / **永久删除所选**（无选择时禁用；永久删除先确认实际会话数，取消零请求）。按条还原/清除仍然可用。**清空回收站** 独立保留，并分开报告批次与会话数。切换视图会清空回收站勾选。
 5. 清理类操作各归其位：**失效归档** 在「已归档」页，**孤立缓存** 在「孤立缓存」页（会报告释放字节）。
 
 ## Host 路由
@@ -108,6 +115,7 @@ dsh plugin --profile web add ./dsh-session-cleanup
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | `GET` | `/dsh-session-cleanup/state` | workspaces、归档/固定集合、会话、回收站、统计 |
+| `GET` | `/dsh-session-cleanup/preview` | 只读会话记录预览（`?id=`） |
 | `POST` | `/dsh-session-cleanup/action` | `archive` \| `unarchive` \| `delete` \| `restore` \| `purge` \| `pruneArchived` \| `pruneOrphanCache` \| `emptyTrash` |
 
 `action` 接受 `{ op, sessionIds?, batch?, labels? }`。`restore` 和 `purge` 必须带 `batch`；`sessionIds` 为空表示作用于整批。**一次删除动作 = 一个回收站批次**，所以批量删除可以作为一个整体撤销。
@@ -115,26 +123,31 @@ dsh plugin --profile web add ./dsh-session-cleanup
 ## 目录结构
 
 ```
-index.js             Host 半边：路由、回收站批次、孤立缓存扫描（939 行）
-client.js            Client 半边：main 面板 + sidebar 入口（1589 行）
+index.js             Host 半边：路由、回收站批次、孤立缓存扫描（1489 行）
+client.js            Client 半边：main 面板 + sidebar 入口（2445 行）
 cordis.patch.yml     bundle patch
 locale/{en,zh}.json  插件元数据字符串
 icon.svg             侧边栏图标
-test/host.test.mjs   Host 路由测试（28 条断言）
-test/client.test.mjs Client 渲染测试（38 条断言）
+test/host.test.mjs            Host 路由测试（83 条断言，含 R1–R5 回归）
+test/client.test.mjs          Client 渲染测试（141 条断言，含 R4 与回收站勾选及作用域防护）
+test/independent-host.mjs     独立 Host 复现集（50 条断言，原样保留）
+test/independent-client.mjs   独立 Client 复现集（15 条断言，原样保留）
 ```
 
 ## 测试
 
 ```bash
 npm test
+npm run test:independent
 ```
 
-两套测试都跑在纯 Node 上，零依赖：Host 套件用临时 `DSH_HOME` 驱动真实路由处理函数，Client 套件用极简 hook 运行时执行组件树。
+官方套件与独立复现集都跑在纯 Node 上，零依赖：Host 套件用临时 `DSH_HOME` 驱动真实路由处理函数，Client 套件用极简 hook 运行时执行组件树。故障注入钩子仅在 `DSHSC_TEST_HOOKS=1` 时生效。独立 65 条断言未改期望、未跳过。
 
 ```
-28/28 passed   host
-38/38 passed   client
+83/83 passed    official host
+141/141 passed  official client
+50/50 passed    independent host
+14/14 passed    independent client
 ```
 
 ## FAQ

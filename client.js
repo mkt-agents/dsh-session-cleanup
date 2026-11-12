@@ -8,6 +8,11 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'session-cleanup'
     const STATE_PATH = 'dsh-session-cleanup/state'
     const ACTION_PATH = 'dsh-session-cleanup/action'
+    const PREVIEW_PATH = 'dsh-session-cleanup/preview'
+    /** Icon key this plugin owns in the shared `contextMenu.icon` registry. */
+    const MENU_ICON_KEY = 'session-cleanup.delete'
+    /** Bounded lookup retries while another plugin's boot provides the menu service. */
+    const MAX_MENU_ATTEMPTS = 20
 
     const EN = {
       'panel.title': 'Session cleanup',
@@ -22,6 +27,7 @@ window.__ModuleLoader__.load({
       'panel.section.archived': 'Archived',
       'panel.ungrouped': 'Ungrouped',
       'panel.ungroupedPath': 'not assigned to a workspace',
+      'panel.workspaceCount': '{count} sessions',
       'panel.unknownSession': 'Untitled session',
       'panel.updatedAt': 'updated {time}',
       'panel.search': 'Search title, id, or path',
@@ -50,7 +56,6 @@ window.__ModuleLoader__.load({
       'panel.bulk.delete': 'Delete selected',
       'panel.bulk.confirm': 'Move {count} session(s) to the recycle bin?',
       'panel.bulk.skipLive': '{count} open session(s) were skipped.',
-      'panel.bulk.selectGroup': 'Select sessions in this group',
       'panel.bulk.running': 'Working…',
       'panel.notice.ok': 'Done: {ok} changed, {failed} failed.',
       'panel.notice.deleted': 'Moved {count} session(s) to the recycle bin. You can undo below.',
@@ -69,6 +74,11 @@ window.__ModuleLoader__.load({
       'panel.trash.purgeAll': 'Purge batch',
       'panel.trash.confirmPurge': 'Purge this for good?',
       'panel.trash.confirmPurgeBatch': 'Purge all {count} session(s) in this batch?',
+      'panel.trash.restoreSelected': 'Restore selected',
+      'panel.trash.purgeSelected': 'Permanently delete selected',
+      'panel.trash.confirmPurgeSelected': 'Permanently delete {count} selected session(s)? This cannot be undone.',
+      'panel.trash.selectBatch': 'Select all in this batch',
+      'panel.trash.batchChecked': '{selected}/{count} selected',
       'panel.trash.restored': 'Restored {count} session(s).',
       'panel.trash.purged': 'Purged {count} item(s).',
       'panel.trash.empty': 'The recycle bin is empty.',
@@ -87,8 +97,30 @@ window.__ModuleLoader__.load({
       'panel.cache.done': 'Removed {count} file(s), freed {size}.',
       'panel.cache.unavailable': 'Session storage is unavailable, so orphan detection is disabled.',
       'panel.nav.workspaces': 'Workspaces',
+      'panel.nav.maintain': 'Maintenance',
       'panel.nav.emptyCache': 'No orphaned cache files.',
       'panel.nav.emptyArchived': 'No archived sessions.',
+      'panel.emptyHint': 'Pick another view on the left, or clear the search above.',
+      'menu.delete': 'Delete session',
+      'menu.deleted': 'Moved to the recycle bin.',
+      'menu.inUse': 'This session is open or running. Switch to another session and retry.',
+      'menu.missing': 'This session has no stored log any more.',
+      'menu.failed': 'Delete failed: {message}',
+      'panel.preview.back': 'Back',
+      'panel.preview.loading': 'Reading the log…',
+      'panel.preview.empty': 'This session has no readable messages yet.',
+      'panel.preview.truncated': 'Showing the last {count} messages.',
+      'panel.preview.records': '{count} turns · {size}',
+      'panel.preview.user': 'You',
+      'panel.preview.assistant': 'Assistant',
+      'panel.preview.error': 'Could not read the log: {message}',
+      'panel.action.confirmCache': 'Confirm cleanup',
+      'panel.cache.confirm': 'Delete {count} orphaned cache file(s)? This cannot be undone.',
+      'panel.bulk.hiddenFilter': '{count} selected item(s) are hidden by the current filter.',
+      'panel.notice.summary': 'Done: {ok} changed, {failed} failed, {skipped} skipped.',
+      'panel.notice.firstSkip': 'Skipped: {message}',
+      'panel.trash.emptied': 'Purged {count} session(s) in {batches} batch(es).',
+      'panel.sort.label': 'Sort sessions',
     }
 
     const ZH = {
@@ -104,6 +136,7 @@ window.__ModuleLoader__.load({
       'panel.section.archived': '已归档',
       'panel.ungrouped': '未分组',
       'panel.ungroupedPath': '未归属任何工作区',
+      'panel.workspaceCount': '{count} 个会话',
       'panel.unknownSession': '未命名会话',
       'panel.updatedAt': '更新于 {time}',
       'panel.search': '搜索标题、ID 或路径',
@@ -132,7 +165,6 @@ window.__ModuleLoader__.load({
       'panel.bulk.delete': '删除所选',
       'panel.bulk.confirm': '确定把 {count} 个会话移入回收站？',
       'panel.bulk.skipLive': '已跳过 {count} 个已打开会话。',
-      'panel.bulk.selectGroup': '选择该分组内的会话',
       'panel.bulk.running': '处理中…',
       'panel.notice.ok': '完成：成功 {ok} 个，失败 {failed} 个。',
       'panel.notice.deleted': '已把 {count} 个会话移入回收站，可在下方还原。',
@@ -151,6 +183,11 @@ window.__ModuleLoader__.load({
       'panel.trash.purgeAll': '整批清除',
       'panel.trash.confirmPurge': '确定彻底清除这一项？',
       'panel.trash.confirmPurgeBatch': '确定彻底清除该批次的 {count} 个会话？',
+      'panel.trash.restoreSelected': '还原所选',
+      'panel.trash.purgeSelected': '永久删除所选',
+      'panel.trash.confirmPurgeSelected': '确定永久删除所选的 {count} 个会话？此操作无法恢复。',
+      'panel.trash.selectBatch': '全选该批次',
+      'panel.trash.batchChecked': '已选 {selected}/{count}',
       'panel.trash.restored': '已还原 {count} 个会话。',
       'panel.trash.purged': '已清除 {count} 项。',
       'panel.trash.empty': '回收站是空的。',
@@ -169,8 +206,30 @@ window.__ModuleLoader__.load({
       'panel.cache.done': '已删除 {count} 个文件，释放 {size}。',
       'panel.cache.unavailable': '会话存储不可用，已停用孤立缓存检测。',
       'panel.nav.workspaces': '工作区',
+      'panel.nav.maintain': '维护',
       'panel.nav.emptyCache': '没有孤立缓存。',
       'panel.nav.emptyArchived': '没有已归档会话。',
+      'panel.emptyHint': '试试在左侧切换视图，或清理搜索条件。',
+      'menu.delete': '删除会话',
+      'menu.deleted': '已移入回收站。',
+      'menu.inUse': '这个会话正在使用中（已打开或运行），请先切换到其他会话再删除。',
+      'menu.missing': '这个会话的日志已经不存在了。',
+      'menu.failed': '删除失败：{message}',
+      'panel.preview.back': '返回',
+      'panel.preview.loading': '正在读取会话记录…',
+      'panel.preview.empty': '这个会话还没有可预览的消息。',
+      'panel.preview.truncated': '只显示最近 {count} 条消息。',
+      'panel.preview.records': '{count} 轮对话 · {size}',
+      'panel.preview.user': '你',
+      'panel.preview.assistant': '助手',
+      'panel.preview.error': '读取会话记录失败：{message}',
+      'panel.action.confirmCache': '确认清理',
+      'panel.cache.confirm': '确定删除 {count} 个孤立缓存文件？此操作无法撤销。',
+      'panel.bulk.hiddenFilter': '另有 {count} 项已选，但不在当前筛选结果中。',
+      'panel.notice.summary': '完成：成功 {ok} 个，失败 {failed} 个，跳过 {skipped} 个。',
+      'panel.notice.firstSkip': '跳过原因：{message}',
+      'panel.trash.emptied': '已清除 {count} 个会话（{batches} 个批次）。',
+      'panel.sort.label': '排序',
     }
 
     // Surface tokens: the host's own management-list contract is a fill plus a
@@ -179,42 +238,42 @@ window.__ModuleLoader__.load({
     // same pure white as the page, so a card painted with them has no visible
     // boundary at all. Every surface therefore pairs a fill with a stroke.
     const CSS = [
-      '.dshsc-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:13px;--dshsc-row-selected-bg:var(--dsw-alias-bg-multi-select);--dshsc-row-selected-bar:var(--dsw-alias-state-business-primary);}',
+      '.dshsc-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:14px;--dshsc-row-selected-bg:var(--dsw-alias-bg-multi-select);--dshsc-row-selected-bar:var(--dsw-alias-state-business-primary);}',
       '.dshsc-head{display:flex;flex-direction:column;gap:6px;padding:12px 20px 8px;background:var(--dsw-alias-bg-base);border-bottom:1px solid var(--dsw-alias-border-l1);}',
       '.dshsc-headRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}',
-      '.dshsc-h1{margin:0;font-size:16px;font-weight:600;line-height:24px;letter-spacing:-.01em;}',
+      '.dshsc-h1{margin:0;font-size:17px;font-weight:600;line-height:26px;letter-spacing:-.01em;}',
       '.dshsc-metaRow{display:flex;align-items:center;gap:6px 12px;min-width:0;flex-wrap:wrap;}',
-      '.dshsc-sub{margin:0;flex:1 1 200px;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.dshsc-sub{margin:0;flex:1 1 200px;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '.dshsc-spacer{flex:1;}',
       '.dshsc-toolbar{display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;}',
       '.dshsc-toolbarLabel{display:inline-flex;align-items:center;gap:6px;padding-left:2px;color:var(--dsw-alias-label-secondary);font-size:12px;cursor:pointer;user-select:none;}',
-      '.dshsc-search{flex:1;min-width:150px;max-width:300px;height:25px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;}',
+      '.dshsc-search{flex:1;min-width:160px;max-width:460px;height:30px;padding:0 10px;border-radius:6px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;}',
       '.dshsc-search:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;}',
-      '.dshsc-select{height:25px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer;}',
-      '.dshsc-stats{display:flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;}',
+      '.dshsc-select{height:30px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;cursor:pointer;}',
+      '.dshsc-stats{display:flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;}',
       '.dshsc-stat{padding:0 6px;border-radius:999px;background:var(--dsw-alias-bg-module-platform);white-space:nowrap;font-variant-numeric:tabular-nums;}',
       '.dshsc-statWarn{color:var(--dsw-alias-state-warn-label);}',
       '.dshsc-split{display:flex;flex:1;min-height:0;}',
-      '.dshsc-nav{flex:none;width:208px;min-width:0;display:flex;flex-direction:column;gap:2px;padding:8px 8px 16px;overflow:auto;border-right:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);}',
+      '.dshsc-nav{flex:none;width:220px;min-width:0;display:flex;flex-direction:column;gap:2px;padding:8px 8px 16px;overflow:auto;border-right:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);}',
       '.dshsc-navSection{padding:8px 8px 4px;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);}',
-      '.dshsc-navItem{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;text-align:left;cursor:pointer;transition:background .12s;}',
+      '.dshsc-navItem{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;text-align:left;cursor:pointer;transition:background .12s;}',
       '.dshsc-navItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);}',
       '.dshsc-navItem:disabled{opacity:.5;cursor:not-allowed;}',
       '.dshsc-navItem:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;}',
       '.dshsc-navItemActive,.dshsc-navItemActive:hover:not(:disabled){background:var(--dshsc-row-selected-bg);box-shadow:inset 2px 0 0 var(--dshsc-row-selected-bar);}',
       '.dshsc-navMain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}',
-      '.dshsc-navLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px;}',
+      '.dshsc-navLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px;}',
       '.dshsc-navMeta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:14px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;}',
       '.dshsc-navWarn .dshsc-navMeta,.dshsc-navWarn .dshsc-pill{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-primary);}',
       '.dshsc-navDivider{height:1px;margin:6px 8px;background:var(--dsw-alias-border-l2);}',
       '.dshsc-pane{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}',
       '.dshsc-paneHead{flex:none;display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--dsw-alias-bg-base);border-bottom:1px solid var(--dsw-alias-border-l1);}',
       '.dshsc-paneBody{flex:1;min-height:0;overflow:auto;padding:10px 16px 20px;}',
-      '.dshsc-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;}',
+      '.dshsc-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;}',
       '.dshsc-btn:hover:not(:disabled){border-color:var(--dsw-alias-border-l4);background:var(--dsw-alias-interactive-bg-hover);}',
       '.dshsc-btn:disabled{opacity:.4;cursor:not-allowed;}',
       '.dshsc-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;}',
-      '.dshsc-btnSm{height:24px;padding:0 9px;font-size:11px;border-radius:6px;}',
+      '.dshsc-btnSm{height:28px;padding:0 10px;font-size:12px;border-radius:6px;}',
       '.dshsc-btnGhost{background:transparent;border-color:transparent;color:var(--dsw-alias-label-secondary);}',
       '.dshsc-btnGhost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:transparent;color:var(--dsw-alias-label-primary);}',
       '.dshsc-btnDanger{color:var(--dsw-alias-state-error-primary);}',
@@ -228,46 +287,71 @@ window.__ModuleLoader__.load({
       '.dshsc-chevron{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;border-radius:5px;padding:0;transition:background .12s,color .12s;}',
       '.dshsc-chevron:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
       '.dshsc-cardTitle{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34%;}',
-      '.dshsc-cardPath{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44%;font-variant-numeric:tabular-nums;}',
-      '.dshsc-countText{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;}',
+      '.dshsc-headStats{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;white-space:nowrap;}',
+      '.dshsc-headSize{color:var(--dsw-alias-label-secondary);font-weight:500;font-variant-numeric:tabular-nums;}',
       '.dshsc-pill{flex:none;min-width:20px;padding:0 6px;border-radius:999px;background:var(--dsw-alias-settings-card-fill);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:17px;text-align:center;border:1px solid var(--dsw-alias-border-l3);font-variant-numeric:tabular-nums;}',
-      '.dshsc-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--dsw-alias-border-l2);transition:background .12s,box-shadow .12s;}',
+      '.dshsc-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--dsw-alias-border-l2);transition:background .12s,box-shadow .12s;}',
       '.dshsc-rowFirst{border-top:none;}',
       '.dshsc-row:hover{background:var(--dsw-alias-interactive-bg-hover);}',
       '.dshsc-rowSelected{background:var(--dshsc-row-selected-bg);box-shadow:inset 2px 0 0 var(--dshsc-row-selected-bar);}',
       '.dshsc-rowSelected:hover{background:var(--dshsc-row-selected-bg);}',
       '.dshsc-rowNested{padding-left:30px;}',
-      '.dshsc-check{flex:none;width:15px;height:15px;margin:0;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer;}',
+      '.dshsc-check{flex:none;width:18px;height:18px;margin:0;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer;}',
       '.dshsc-check:disabled{cursor:not-allowed;opacity:.45;}',
       '.dshsc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;cursor:pointer;}',
       '.dshsc-mainStatic{cursor:default;}',
-      '.dshsc-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px;}',
+      '.dshsc-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px;}',
       '.dshsc-titleMuted{color:var(--dsw-alias-label-tertiary);}',
-      '.dshsc-meta{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;overflow:hidden;white-space:nowrap;}',
+      '.dshsc-meta{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;white-space:nowrap;}',
       '.dshsc-size{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);}',
-      '.dshsc-sizeCell{flex:none;width:58px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);}',
+      '.dshsc-sizeCell{flex:none;width:64px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);}',
       '.dshsc-sizeBig{color:var(--dsw-alias-state-warn-label);font-weight:600;}',
-      '.dshsc-badge{padding:0 5px;border-radius:4px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);font-size:10px;line-height:14px;}',
+      '.dshsc-badge{padding:0 6px;border-radius:4px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;}',
       '.dshsc-badgeLive{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary);}',
       '.dshsc-badgeRun{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-primary);}',
       '.dshsc-actions{display:flex;align-items:center;gap:4px;flex:none;}',
       '.dshsc-notice{display:flex;align-items:center;gap:10px;margin:0 20px 10px;padding:8px 10px;border-radius:9px;border:1px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-bg-module-platform);font-size:12px;line-height:17px;}',
       '.dshsc-noticeError{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}',
-      '.dshsc-empty{padding:28px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;text-align:center;}',
-      '.dshsc-skeleton{padding:28px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;}',
-      '.dshsc-dock{position:sticky;bottom:0;left:0;right:0;display:flex;align-items:center;gap:8px;padding:8px 20px;border-top:1px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-bg-module-platform);}',
+      '.dshsc-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:64px 16px;color:var(--dsw-alias-label-tertiary);font-size:12px;text-align:center;}',
+      '.dshsc-paneBody > .dshsc-empty{min-height:62%;}',
+      '.dshsc-emptyIcon{display:inline-flex;color:var(--dsw-alias-label-tertiary);opacity:.75;}',
+      '.dshsc-emptyTitle{font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);}',
+      '.dshsc-emptyHint{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);}',
+      '.dshsc-skeleton{display:flex;align-items:center;justify-content:center;min-height:140px;color:var(--dsw-alias-label-tertiary);font-size:12px;}',
+      '.dshsc-dock{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 16px;border-bottom:1px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-bg-module-platform);}',
       '.dshsc-dockInfo{font-size:12px;font-weight:600;}',
       '.dshsc-dockHint{font-size:11px;color:var(--dsw-alias-label-tertiary);}',
-      '.dshsc-confirmText{font-size:11px;color:var(--dsw-alias-state-error-primary);font-weight:500;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.dshsc-confirmText{font-size:12px;color:var(--dsw-alias-state-error-primary);font-weight:500;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.dshsc-preview{display:flex;flex-direction:column;gap:12px;min-height:0;}',
+      '.dshsc-previewHead{position:sticky;top:-10px;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-10px -16px 0;padding:10px 16px 8px;background:var(--dsw-alias-bg-base);border-bottom:1px solid var(--dsw-alias-border-l1);}',
+      '.dshsc-previewTitle{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52%;}',
+      '.dshsc-previewMeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}',
+      '.dshsc-previewChip{padding:2px 8px;border-radius:999px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;}',
+      '.dshsc-transcript{display:flex;flex-direction:column;gap:14px;max-width:900px;padding:4px 0 12px;}',
+      '.dshsc-msg{display:flex;flex-direction:column;gap:5px;min-width:0;}',
+      '.dshsc-roleChip{align-self:flex-start;padding:0 8px;border-radius:999px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:18px;}',
+      '.dshsc-roleChipUser{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-multi-select);border-color:transparent;}',
+      '.dshsc-msgText{min-width:0;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:21px;color:var(--dsw-alias-label-primary);}',
+      '.dshsc-msgUser .dshsc-msgText{align-self:flex-start;max-width:82%;padding:10px 14px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-module-platform);}',
+      '.dshsc-msgAssistant .dshsc-msgText{padding:0 2px;}',
+      '.dshsc-previewFoot{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;padding-top:10px;border-top:1px dashed var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);font-size:11px;}',
+      '.dshsc-navSectionGap{padding-top:14px;}',
+      '.dshsc-navIcon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;color:var(--dsw-alias-label-tertiary);}',
+      '.dshsc-navItemActive .dshsc-navIcon{color:var(--dsw-alias-state-business-primary);}',
+      '.dshsc-navWarn .dshsc-navIcon{color:var(--dsw-alias-state-warn-label);}',
+      '.dshsc-navZero .dshsc-navLabel{color:var(--dsw-alias-label-tertiary);}',
+      '.dshsc-navZero .dshsc-pill{opacity:.55;}',
+      '.dshsc-dockFoot{border-bottom:none;border-top:1px solid var(--dsw-alias-settings-card-stroke);margin-top:auto;}',
       '@media (max-width:760px){',
       '.dshsc-split{flex-direction:column;}',
-      '.dshsc-nav{width:100%;flex-direction:row;flex-wrap:wrap;gap:6px;padding:8px 12px;overflow:visible;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l2);}',
+      '.dshsc-nav{width:100%;flex-direction:row;flex-wrap:wrap;gap:6px;padding:8px 12px;overflow:auto;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l2);max-height:none;}',
       '.dshsc-navSection,.dshsc-navDivider{display:none;}',
-      '.dshsc-navItem{width:auto;padding:5px 10px;border-radius:999px;border-color:var(--dsw-alias-border-l3);}',
+      '.dshsc-navItem{width:auto;padding:8px 12px;border-radius:999px;border-color:var(--dsw-alias-border-l3);}',
       '.dshsc-navItemActive{border-color:var(--dsw-alias-state-business-primary);box-shadow:none;}',
       '.dshsc-navMeta{display:none;}',
-      '.dshsc-paneHead{padding:8px 12px;}',
+      '.dshsc-paneHead,.dshsc-dock{padding:8px 12px;}',
       '.dshsc-paneBody{padding:10px 12px 16px;}',
+      '.dshsc-previewHead{align-items:flex-start;}',
       '}',
     ].join('')
 
@@ -280,7 +364,8 @@ window.__ModuleLoader__.load({
     function apiPath(path) {
       if (typeof document === 'undefined') return '/' + path
       try {
-        return new URL(path, document.baseURI).pathname
+        const url = new URL(path, document.baseURI)
+        return url.pathname + url.search
       } catch {
         return '/' + path
       }
@@ -316,6 +401,49 @@ window.__ModuleLoader__.load({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       })
+    }
+
+    /**
+     * Delete one Session from the sidebar's own context menu, in one click.
+     *
+     * No second-click arm step: the delete is reversible (the Session lands in
+     * the recycle bin batch set, not unlinked), so the menu row deletes directly
+     * and reports the outcome through the menu service's notify channel.
+     * @param ctx - Client plugin context.
+     * @param t - Bound translator for this plugin's namespace.
+     * @param sessionId - Session the menu was opened for.
+     * @param displayTitle - Title captured by the menu row, stored in the batch.
+     */
+    async function deleteFromMenu(ctx, t, sessionId, displayTitle) {
+      const menus = ctx.get('contextMenus')
+      const title = typeof displayTitle === 'string' && displayTitle !== '' ? displayTitle : undefined
+      try {
+        const result = await act({
+          op: 'delete',
+          sessionIds: [sessionId],
+          ...(title === undefined ? {} : { labels: { [sessionId]: title } }),
+        })
+        const outcome = result?.results?.[0] ?? {}
+        if (outcome.ok !== true) {
+          const code = String(outcome.error ?? '')
+          const text =
+            code === 'session-in-use'
+              ? t('menu.inUse')
+              : code === 'session-log-not-found'
+                ? t('menu.missing')
+                : t('menu.failed', { message: outcome.reason ?? code ?? 'unknown' })
+          menus?.notify?.(text)
+          return
+        }
+        menus?.notify?.(t('menu.deleted'), true)
+        // The Host Session list is a projection: drop the stale row immediately so
+        // the sidebar reflects the move without waiting for a reload.
+        try {
+          await ctx.get('sessions')?.refresh?.()
+        } catch {}
+      } catch (cause) {
+        menus?.notify?.(t('menu.failed', { message: cause instanceof Error ? cause.message : String(cause) }))
+      }
     }
 
     /**
@@ -405,9 +533,18 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * The same glyph at menu scale, registered under this plugin's icon key.
+     * `contextMenu.icon` passes the action's icon descriptor; this glyph has no
+     * use for it, so the prop is accepted and ignored.
+     * @returns the menu-sized trash glyph.
+     */
+    function MenuTrashIcon() {
+      return h(CleanupIcon, { size: 16 })
+    }
+
     /** A chevron that points down when expanded and right when collapsed. */
-    function Chevron({ open }) {
-      return h(
+    function Chevron({ open }) {      return h(
         'svg',
         {
           width: 12,
@@ -422,6 +559,56 @@ window.__ModuleLoader__.load({
           'aria-hidden': true,
         },
         h('path', { d: 'M6 3.5L10.5 8L6 12.5' }),
+      )
+    }
+
+    /** Stroke-glyph path table shared by the rail, the toolbar and empty states. */
+    const GLYPHS = {
+      archive: 'M2.5 3.5h11M2.5 3.5v2.5h11V3.5M4 6v6.5a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V6M6.5 8.5h3',
+      trash:
+        'M3 4.5h10M5.5 4.5V3a.8.8 0 0 1 .8-.8h3.4a.8.8 0 0 1 .8.8v1.5M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8M6.7 7v4M9.3 7v4',
+      cache: 'M8 2l5.5 3L8 8 2.5 5 8 2M2.5 8.5L8 11.5l5.5-3M2.5 11.5L8 14.5l5.5-3',
+      inbox:
+        'M2.5 8.5V12a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5V8.5M2.5 8.5L4.6 3.2a1 1 0 0 1 .9-.7h5a1 1 0 0 1 .9.7l2.1 5.3M2.5 8.5h3.2a.8.8 0 0 1 .8.9 1.6 1.6 0 0 0 3 0 .8.8 0 0 1 .8-.9h3.2',
+      refresh: 'M13 8a5 5 0 1 1-1.4-3.5M13.5 2.5V5H11',
+    }
+
+    /**
+     * One small stroke glyph by name from {@link GLYPHS}.
+     * @param props - name and optional size/strokeWidth.
+     * @returns the svg element.
+     */
+    function Glyph({ name, size, strokeWidth }) {
+      const edge = typeof size === 'number' && size > 0 ? size : 14
+      return h(
+        'svg',
+        {
+          width: edge,
+          height: edge,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: strokeWidth ?? 1.3,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+        },
+        h('path', { d: GLYPHS[name] ?? '' }),
+      )
+    }
+
+    /**
+     * Centered empty state: one glyph, the reason, and an optional way out.
+     * @param props - icon name, title text, optional hint text.
+     * @returns the empty block.
+     */
+    function EmptyState({ icon, title, hint }) {
+      return h(
+        'div',
+        { className: 'dshsc-empty' },
+        h('span', { className: 'dshsc-emptyIcon' }, h(Glyph, { name: icon ?? 'inbox', size: 28, strokeWidth: 1.1 })),
+        h('div', { className: 'dshsc-emptyTitle' }, title),
+        hint === undefined || hint === '' ? null : h('div', { className: 'dshsc-emptyHint' }, hint),
       )
     }
 
@@ -443,16 +630,19 @@ window.__ModuleLoader__.load({
         checked,
         disabled,
         'aria-label': label,
+        'aria-checked': indeterminate === true ? 'mixed' : checked === true ? 'true' : 'false',
+        'data-indeterminate': indeterminate === true ? 'true' : 'false',
         onChange,
       })
     }
 
     /**
      * One entry in the left navigation rail.
-     * @param props - label, optional meta line, count, and active/warn state.
+     * @param props - label, optional meta line, optional leading glyph, count,
+     *   and active/warn/muted state.
      * @returns the nav button element.
      */
-    function NavItem({ label, meta, count, title, active, warn, disabled, onClick }) {
+    function NavItem({ label, meta, count, title, active, warn, muted, icon, disabled, onClick }) {
       return h(
         'button',
         {
@@ -461,11 +651,15 @@ window.__ModuleLoader__.load({
           'aria-current': active === true,
           'aria-selected': active === true,
           className:
-            'dshsc-navItem' + (active === true ? ' dshsc-navItemActive' : '') + (warn === true ? ' dshsc-navWarn' : ''),
+            'dshsc-navItem' +
+            (active === true ? ' dshsc-navItemActive' : '') +
+            (warn === true ? ' dshsc-navWarn' : '') +
+            (muted === true ? ' dshsc-navZero' : ''),
           title: title ?? label,
           disabled,
           onClick,
         },
+        icon === undefined ? null : h('span', { className: 'dshsc-navIcon' }, h(Glyph, { name: icon })),
         h(
           'span',
           { className: 'dshsc-navMain' },
@@ -532,8 +726,10 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * One workspace group rendered as a bordered card with its own header, a
-     * group checkbox, and collapsible rows.
+     * One workspace group rendered as a bordered card with a slim stats header and
+     * collapsible rows. The rail already names the group, so the header carries
+     * only what the list cannot: its size and length. Selection lives in the pane
+     * toolbar, never a second select-all.
      * @param props - Group data and handlers.
      * @returns the card element.
      */
@@ -543,49 +739,20 @@ window.__ModuleLoader__.load({
       pending,
       confirming,
       collapsed,
-      compact,
       onToggleCollapse,
       onToggleRow,
-      onToggleGroup,
+      onPreview,
       onArchive,
       onUnarchive,
       onDelete,
       onConfirm,
       onCancel,
       t,
-      archivedGroup,
     }) {
       const ids = group.rows.map((row) => row.id)
-      const selectedCount = ids.filter((id) => selection.has(id)).length
-      const allSelected = ids.length > 0 && selectedCount === ids.length
-      const partially = selectedCount > 0 && !allSelected
       const headClass = 'dshsc-cardHead' + (collapsed ? ' dshsc-cardHeadEmpty' : '')
       const groupBytes = group.rows.reduce((sum, row) => sum + (row.sizeBytes ?? 0), 0)
       const busy = pending.length > 0
-      // A single-workspace view already names the workspace in the rail, so the
-      // card head only repeats it lightly: no path chip, no count pill.
-      const headBody =
-        compact === true
-          ? [
-              h(
-                'span',
-                { key: 'title', className: 'dshsc-cardTitle', title: group.path || group.title },
-                group.title || t('panel.ungrouped'),
-              ),
-              h('span', { key: 'count', className: 'dshsc-countText' }, t('panel.workspaceCount', { count: ids.length })),
-            ]
-          : [
-              h(
-                'span',
-                { key: 'title', className: 'dshsc-cardTitle', title: group.title },
-                group.title || t('panel.ungrouped'),
-              ),
-              h(
-                'span',
-                { key: 'path', className: 'dshsc-cardPath', title: group.path },
-                group.path || (archivedGroup ? '' : t('panel.ungroupedPath')),
-              ),
-            ]
       return h(
         'section',
         { className: 'dshsc-card' + (group.workspaceId === '' ? ' dshsc-cardLoose' : '') },
@@ -603,19 +770,12 @@ window.__ModuleLoader__.load({
             },
             h(Chevron, { open: !collapsed }),
           ),
-          h(TriCheck, {
-            checked: allSelected,
-            indeterminate: partially,
-            disabled: ids.length === 0 || busy,
-            label: t('panel.bulk.selectGroup'),
-            onChange: () => onToggleGroup(ids, allSelected),
-          }),
-          ...headBody,
-          h('span', { className: 'dshsc-spacer' }),
-          formatBytes(groupBytes) === ''
-            ? null
-            : h('span', { className: 'dshsc-size' }, formatBytes(groupBytes)),
-          compact === true ? null : h('span', { className: 'dshsc-pill' }, String(group.rows.length)),
+          h(
+            'span',
+            { className: 'dshsc-headStats', title: group.path || group.title },
+            h('span', { className: 'dshsc-headSize' }, formatBytes(groupBytes) || '0 B'),
+            h('span', null, t('panel.workspaceCount', { count: ids.length })),
+          ),
         ),
         collapsed
           ? null
@@ -638,7 +798,7 @@ window.__ModuleLoader__.load({
                 }),
                 h(
                   'div',
-                  { className: 'dshsc-main', onClick: () => onToggleRow(row.id) },
+                  { className: 'dshsc-main', onClick: () => onPreview(row.id) },
                   h(
                     'span',
                     {
@@ -653,16 +813,14 @@ window.__ModuleLoader__.load({
                     formatTime(row.updatedAt) === ''
                       ? null
                       : h('span', null, t('panel.updatedAt', { time: formatTime(row.updatedAt) })),
-                    compact === true || row.cwd === '' ? null : h('span', { title: row.cwd }, '· ' + baseName(row.cwd)),
+                    row.cwd === '' ? null : h('span', { title: row.cwd }, '· ' + baseName(row.cwd)),
                     row.running
                       ? h('span', { className: 'dshsc-badge dshsc-badgeRun' }, t('panel.badge.running'))
                       : row.live
                         ? h('span', { className: 'dshsc-badge dshsc-badgeLive' }, t('panel.badge.live'))
                         : null,
                     row.blank ? h('span', { className: 'dshsc-badge' }, t('panel.badge.blank')) : null,
-                    row.pinned && !archivedGroup
-                      ? h('span', { className: 'dshsc-badge' }, t('panel.badge.pinned'))
-                      : null,
+                    row.pinned ? h('span', { className: 'dshsc-badge' }, t('panel.badge.pinned')) : null,
                     row.parentSessionId === null
                       ? null
                       : h('span', { className: 'dshsc-badge' }, t('panel.badge.subagent')),
@@ -677,7 +835,7 @@ window.__ModuleLoader__.load({
                     ),
                 h(RowActions, {
                   row,
-                  archived: archivedGroup,
+                  archived: group.workspaceId === '__archived__',
                   pending: pending.includes(row.id),
                   confirming: confirming === row.id,
                   onArchive,
@@ -693,12 +851,138 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Read-only transcript of one stored Session, shown before it is archived or
+     * deleted so the decision is made on content rather than on a title.
+     * @param props - row, preview state, and the actions the row would offer.
+     * @returns the preview column element.
+     */
+    function PreviewPane({ row, state, confirming, onBack, archived, onArchive, onUnarchive, onDelete, onConfirm, onCancel, t }) {
+      const data = state.data
+      const title = row === undefined || row.title === '' ? t('panel.unknownSession') + ' · ' + shortId(state.id) : row.title
+      const meta = []
+      if (data !== null) {
+        const size = formatBytes(data.sizeBytes) || '0 B'
+        if (Number(data.turnCount) > 0) meta.push(t('panel.preview.records', { count: data.turnCount, size }))
+        else meta.push(size)
+        if (data.cwd !== '') meta.push(baseName(data.cwd))
+      }
+      if (row !== undefined && formatTime(row.updatedAt) !== '') meta.push(t('panel.updatedAt', { time: formatTime(row.updatedAt) }))
+      const body =
+        state.loading === true
+          ? h('div', { className: 'dshsc-skeleton' }, t('panel.preview.loading'))
+          : state.error !== null
+            ? h('div', { className: 'dshsc-notice dshsc-noticeError' }, t('panel.preview.error', { message: state.error }))
+            : data === null || data.items.length === 0
+              ? h('div', { className: 'dshsc-empty' }, t('panel.preview.empty'))
+              : h(
+                  'div',
+                  { className: 'dshsc-transcript' },
+                  ...data.items.map((item) => {
+                    const isUser = item.role === 'user'
+                    return h(
+                      'div',
+                      {
+                        key: item.role + ':' + String(item.seq),
+                        className: 'dshsc-msg' + (isUser ? ' dshsc-msgUser' : ' dshsc-msgAssistant'),
+                      },
+                      h(
+                        'span',
+                        {
+                          className: 'dshsc-roleChip' + (isUser ? ' dshsc-roleChipUser' : ''),
+                        },
+                        t(isUser ? 'panel.preview.user' : 'panel.preview.assistant'),
+                      ),
+                      h('div', { className: 'dshsc-msgText' }, item.text),
+                    )
+                  }),
+                  data.truncated === true
+                    ? h(
+                        'div',
+                        { className: 'dshsc-previewFoot' },
+                        t('panel.preview.truncated', { count: data.items.length }),
+                      )
+                    : null,
+                )
+      return h(
+        'div',
+        { className: 'dshsc-preview' },
+        h(
+          'div',
+          { className: 'dshsc-previewHead' },
+          h(
+            'button',
+            { type: 'button', className: 'dshsc-btn dshsc-btnSm dshsc-btnGhost', onClick: onBack },
+            t('panel.preview.back'),
+          ),
+          h('span', { className: 'dshsc-previewTitle', title: state.id }, title),
+          row !== undefined && row.running === true
+            ? h('span', { className: 'dshsc-badge dshsc-badgeRun' }, t('panel.badge.running'))
+            : null,
+          row !== undefined && row.live === true && row.running !== true
+            ? h('span', { className: 'dshsc-badge dshsc-badgeLive' }, t('panel.badge.live'))
+            : null,
+          row !== undefined && row.blank === true ? h('span', { className: 'dshsc-badge' }, t('panel.badge.blank')) : null,
+          h('span', { className: 'dshsc-spacer' }),
+          archived
+            ? h(
+                'button',
+                { type: 'button', className: 'dshsc-btn dshsc-btnSm', onClick: () => onUnarchive(state.id) },
+                t('panel.action.unarchive'),
+              )
+            : h(
+                'button',
+                { type: 'button', className: 'dshsc-btn dshsc-btnSm', onClick: () => onArchive(state.id) },
+                t('panel.action.archive'),
+              ),
+          confirming === state.id
+            ? [
+                h(
+                  'button',
+                  {
+                    key: 'confirm',
+                    type: 'button',
+                    className: 'dshsc-btn dshsc-btnSm dshsc-btnSolidDanger',
+                    onClick: () => onConfirm(state.id),
+                  },
+                  t('panel.action.confirmDelete'),
+                ),
+                h(
+                  'button',
+                  { key: 'cancel', type: 'button', className: 'dshsc-btn dshsc-btnSm', onClick: onCancel },
+                  t('panel.action.cancel'),
+                ),
+              ]
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
+                  disabled: row !== undefined && row.live === true,
+                  title: row !== undefined && row.live === true ? t('panel.hint.live') : undefined,
+                  onClick: () => onDelete(state.id),
+                },
+                t('panel.action.delete'),
+              ),
+        ),
+        meta.length === 0
+          ? null
+          : h(
+              'div',
+              { className: 'dshsc-previewMeta' },
+              ...meta.map((text, index) => h('span', { key: 'm' + index, className: 'dshsc-previewChip' }, text)),
+            ),
+        body,
+      )
+    }
+
+    /**
      * The cleanup panel rendered into the `main` slot for this plugin's id.
      * @param props - Slot props; `t` is the bound locale translator.
      * @returns the panel element.
      */
     function CleanupPage(props) {
       const t = props.t ?? ((key) => key)
+      const refreshSessions = typeof props.refreshSessions === 'function' ? props.refreshSessions : () => {}
       const [data, setData] = React.useState(null)
       const [error, setError] = React.useState(null)
       const [loading, setLoading] = React.useState(true)
@@ -709,6 +993,7 @@ window.__ModuleLoader__.load({
       const [query, setQuery] = React.useState('')
       const [sort, setSort] = React.useState('updated')
       const [activeView, setActiveView] = React.useState(null)
+      const [preview, setPreview] = React.useState(null)
       const [selected, setSelected] = React.useState(function () {
         return new Set()
       })
@@ -717,6 +1002,14 @@ window.__ModuleLoader__.load({
       })
       const [purgeTarget, setPurgeTarget] = React.useState(null)
       const [confirmEmpty, setConfirmEmpty] = React.useState(false)
+      const [confirmCache, setConfirmCache] = React.useState(false)
+      const [trashSelected, setTrashSelected] = React.useState(function () {
+        return new Set()
+      })
+      const [confirmTrashPurge, setConfirmTrashPurge] = React.useState(false)
+      const [confirmTrashPurgeKeys, setConfirmTrashPurgeKeys] = React.useState(function () {
+        return []
+      })
       const alive = React.useRef(true)
 
       React.useEffect(() => {
@@ -802,6 +1095,28 @@ window.__ModuleLoader__.load({
       // the derived view so there is never an empty first frame.
       const currentView = activeView ?? defaultView
 
+      // Cross-workspace selections are easy to miss. Switching the left rail
+      // clears the selection so a later bulk action cannot include hidden rows.
+      // A search filter in the same view keeps the selection, and the dock names
+      // how many selected rows are currently hidden.
+      const selectView = React.useCallback(
+        (id) => {
+          if (id !== currentView) {
+            setSelected(new Set())
+            setConfirming(null)
+            setConfirmBulk(false)
+            setPurgeTarget(null)
+            setConfirmEmpty(false)
+            setConfirmCache(false)
+            setTrashSelected(new Set())
+            setConfirmTrashPurge(false)
+            setConfirmTrashPurgeKeys([])
+          }
+          setActiveView(id)
+        },
+        [currentView],
+      )
+
       const view = React.useMemo(() => {
         const needle = query.trim().toLowerCase()
         const matches = (row) =>
@@ -829,6 +1144,12 @@ window.__ModuleLoader__.load({
         }
         return { groups, archivedGroup }
       }, [currentView, nav, query, comparator, t])
+
+      // A preview is scoped to one Session inside one view. Switching the rail
+      // must follow, so close it instead of leaving a stale transcript behind.
+      React.useEffect(() => {
+        setPreview(null)
+      }, [currentView])
 
       // Keep the rail selection valid after a refresh removes a workspace.
       React.useEffect(() => {
@@ -886,17 +1207,29 @@ window.__ModuleLoader__.load({
         setConfirmBulk(false)
       }, [])
 
-      const toggleGroup = React.useCallback((ids, allSelected) => {
-        setSelected((current) => {
-          const next = new Set(current)
-          for (const id of ids) {
-            if (allSelected) next.delete(id)
-            else next.add(id)
-          }
-          return next
-        })
-        setConfirmBulk(false)
+      /**
+       * Open the transcript of one Session. The request is keyed by id so a slow
+       * read can never overwrite a preview the user already moved on from.
+       * @param id - Session to preview.
+       */
+      const openPreview = React.useCallback(async (id) => {
+        setPreview({ id, loading: true, error: null, data: null })
+        try {
+          const next = await request(PREVIEW_PATH + '?id=' + encodeURIComponent(id))
+          if (!alive.current) return
+          setPreview((current) =>
+            current === null || current.id !== id ? current : { id, loading: false, error: null, data: next },
+          )
+        } catch (cause) {
+          if (!alive.current) return
+          const message = cause instanceof Error ? cause.message : String(cause)
+          setPreview((current) =>
+            current === null || current.id !== id ? current : { id, loading: false, error: message, data: null },
+          )
+        }
       }, [])
+
+      const closePreview = React.useCallback(() => setPreview(null), [])
 
       const toggleAll = React.useCallback(() => {
         setSelected((current) => {
@@ -941,19 +1274,16 @@ window.__ModuleLoader__.load({
             }
             const result = await act({ op, sessionIds: ids, labels })
             const outcomes = result?.results ?? []
-            const failed = outcomes.filter((outcome) => outcome.ok !== true)
-            const ok = outcomes.length - failed.length
-            if (op === 'delete' && failed.length === 0) {
+            const skipped = outcomes.filter((outcome) => outcome.skipped === true)
+            const failed = outcomes.filter((outcome) => outcome.ok !== true && outcome.skipped !== true)
+            const ok = outcomes.filter((outcome) => outcome.ok === true).length
+            if (op === 'delete' && failed.length === 0 && skipped.length === 0) {
               setNotice({ kind: 'info', text: t('panel.notice.deleted', { count: ok }) })
             } else {
-              setNotice({
-                kind: failed.length === 0 ? 'info' : 'error',
-                text:
-                  t('panel.notice.ok', { ok, failed: failed.length }) +
-                  (failed.length === 0
-                    ? ''
-                    : ' ' + t('panel.notice.firstError', { message: firstFailure(failed) })),
-              })
+              let text = t('panel.notice.summary', { ok, failed: failed.length, skipped: skipped.length })
+              if (failed.length > 0) text += ' ' + t('panel.notice.firstError', { message: firstFailure(failed) })
+              if (skipped.length > 0) text += ' ' + t('panel.notice.firstSkip', { message: firstFailure(skipped) })
+              setNotice({ kind: failed.length === 0 ? 'info' : 'error', text })
             }
             if (alive.current && result?.state !== undefined) setData(result.state)
             else await load()
@@ -964,6 +1294,12 @@ window.__ModuleLoader__.load({
                 for (const id of current) if (!done.has(id)) next.add(id)
                 return next
               })
+              // A successful delete or restore changes what the sidebar lists, so
+              // push the same truth into the client Session store.
+              if (done.size > 0) {
+                setPreview((current) => (current !== null && done.has(current.id) ? null : current))
+                refreshSessions()
+              }
             }
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : String(cause))
@@ -976,7 +1312,7 @@ window.__ModuleLoader__.load({
             }
           }
         },
-        [load, sessionById, t],
+        [load, refreshSessions, sessionById, t],
       )
 
       const onArchive = React.useCallback((id) => run('archive', [id]), [run])
@@ -984,6 +1320,41 @@ window.__ModuleLoader__.load({
       const onDelete = React.useCallback((id) => setConfirming(id), [])
       const onConfirm = React.useCallback((id) => run('delete', [id]), [run])
       const onCancel = React.useCallback(() => setConfirming(null), [])
+
+      React.useEffect(() => {
+        if (!(confirming || confirmBulk || purgeTarget || confirmEmpty || confirmCache || confirmTrashPurge)) return
+        const doc = typeof document === 'undefined' ? null : document
+        const node = typeof doc?.querySelector === 'function' ? doc.querySelector('.dshsc-btnSolidDanger') : null
+        if (typeof node?.focus === 'function') node.focus()
+      }, [confirming, confirmBulk, purgeTarget, confirmEmpty, confirmCache, confirmTrashPurge])
+
+      React.useEffect(() => {
+        const doc = typeof document === 'undefined' ? null : document
+        if (typeof doc?.addEventListener !== 'function') return undefined
+        const onKey = (event) => {
+          if (event.key !== 'Escape') return
+          const armed = confirming !== null || confirmBulk || purgeTarget !== null || confirmEmpty || confirmCache || confirmTrashPurge
+          if (armed) {
+            setConfirming(null)
+            setConfirmBulk(false)
+            setPurgeTarget(null)
+            setConfirmEmpty(false)
+            setConfirmCache(false)
+            setConfirmTrashPurge(false)
+            setConfirmTrashPurgeKeys([])
+            event.preventDefault()
+            return
+          }
+          if (preview !== null) {
+            setPreview(null)
+            event.preventDefault()
+          }
+        }
+        doc.addEventListener('keydown', onKey)
+        return () => {
+          if (typeof doc.removeEventListener === 'function') doc.removeEventListener('keydown', onKey)
+        }
+      }, [confirming, confirmBulk, purgeTarget, confirmEmpty, confirmCache, confirmTrashPurge, preview])
 
       /**
        * Post one non-session action and fold its state back in.
@@ -998,13 +1369,20 @@ window.__ModuleLoader__.load({
           try {
             const result = await act(body)
             const outcome = result?.results?.[0] ?? {}
+            const failures = Array.isArray(outcome.failures) ? outcome.failures : []
+            const message = outcome.error ?? firstFailure(failures)
+            const summary = describe(result)
             if (outcome.ok !== true) {
-              setNotice({ kind: 'error', text: t('panel.notice.firstError', { message: outcome.error ?? 'unknown' }) })
+              const errorText = t('panel.notice.firstError', { message: message || 'unknown' })
+              setNotice({ kind: 'error', text: summary ? `${summary} ${errorText}` : errorText })
             } else {
-              setNotice({ kind: 'info', text: describe(result) })
+              setNotice({ kind: 'info', text: summary })
             }
             if (alive.current && result?.state !== undefined) setData(result.state)
             else await load()
+            if (outcome.ok === true || Number(outcome.restored ?? 0) > 0 || Number(outcome.purged ?? 0) > 0) {
+              refreshSessions()
+            }
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : String(cause))
             await load()
@@ -1013,10 +1391,11 @@ window.__ModuleLoader__.load({
               setPending([])
               setPurgeTarget(null)
               setConfirmEmpty(false)
+              setConfirmCache(false)
             }
           }
         },
-        [load, t],
+        [load, refreshSessions, t],
       )
 
       /**
@@ -1039,10 +1418,185 @@ window.__ModuleLoader__.load({
               }
               return t('panel.trash.purged', { count: outcome.purged ?? count ?? 1 })
             },
-            batch,
+            sessionId ?? batch,
           )
         },
         [runSimple, t],
+      )
+
+      const trashKeyOf = (batch, sessionId) => batch + '\t' + sessionId
+
+      const trashItems = React.useMemo(() => {
+        const rows = []
+        for (const batch of data?.trash ?? []) {
+          for (const item of batch.items ?? []) {
+            rows.push({ batch: batch.batch, sessionId: item.sessionId, item, total: batch.items.length })
+          }
+        }
+        return rows
+      }, [data])
+
+      React.useEffect(() => {
+        const live = new Set(trashItems.map((row) => trashKeyOf(row.batch, row.sessionId)))
+        setTrashSelected((current) => {
+          let changed = false
+          const next = new Set()
+          for (const key of current) {
+            if (live.has(key)) next.add(key)
+            else changed = true
+          }
+          return changed ? next : current
+        })
+      }, [trashItems])
+
+      const visibleTrashKeys = React.useMemo(
+        () => trashItems.map((row) => trashKeyOf(row.batch, row.sessionId)),
+        [trashItems],
+      )
+      const visibleTrashSelected = visibleTrashKeys.filter((key) => trashSelected.has(key))
+      const hiddenTrashSelected = Math.max(0, trashSelected.size - visibleTrashSelected.length)
+
+      const sameTrashKeys = (left, right) => {
+        if (left.length !== right.length) return false
+        const a = [...left].sort()
+        const b = [...right].sort()
+        for (let index = 0; index < a.length; index += 1) {
+          if (a[index] !== b[index]) return false
+        }
+        return true
+      }
+
+      React.useEffect(() => {
+        if (confirmTrashPurge !== true) return
+        if (!sameTrashKeys(visibleTrashSelected, confirmTrashPurgeKeys)) {
+          setConfirmTrashPurge(false)
+          setConfirmTrashPurgeKeys([])
+        }
+      }, [confirmTrashPurge, confirmTrashPurgeKeys, visibleTrashSelected])
+
+      const toggleTrashItem = React.useCallback((batch, sessionId) => {
+        const key = trashKeyOf(batch, sessionId)
+        setTrashSelected((current) => {
+          const next = new Set(current)
+          if (next.has(key)) next.delete(key)
+          else next.add(key)
+          return next
+        })
+        setConfirmTrashPurge(false)
+        setConfirmTrashPurgeKeys([])
+      }, [])
+
+      const toggleTrashBatch = React.useCallback((batchName, sessionIds) => {
+        setTrashSelected((current) => {
+          const keys = sessionIds.map((sessionId) => trashKeyOf(batchName, sessionId))
+          const allOn = keys.length > 0 && keys.every((key) => current.has(key))
+          const next = new Set(current)
+          if (allOn) for (const key of keys) next.delete(key)
+          else for (const key of keys) next.add(key)
+          return next
+        })
+        setConfirmTrashPurge(false)
+        setConfirmTrashPurgeKeys([])
+      }, [])
+
+      const parseTrashKey = (key) => {
+        const at = key.indexOf('\t')
+        if (at <= 0 || at === key.length - 1) return null
+        return { batch: key.slice(0, at), sessionId: key.slice(at + 1) }
+      }
+
+      const groupsFromTrashKeys = (keys) => {
+        const live = new Set(trashItems.map((row) => trashKeyOf(row.batch, row.sessionId)))
+        const groups = new Map()
+        for (const key of keys) {
+          if (!live.has(key)) continue
+          const parsed = parseTrashKey(key)
+          if (parsed === null) continue
+          const list = groups.get(parsed.batch) ?? []
+          list.push(parsed.sessionId)
+          groups.set(parsed.batch, list)
+        }
+        return groups
+      }
+
+      const runTrashSelected = React.useCallback(
+        async (op) => {
+          const sourceKeys =
+            op === 'purge' && confirmTrashPurge === true ? confirmTrashPurgeKeys : visibleTrashSelected
+          const groups = groupsFromTrashKeys(sourceKeys)
+          if (groups.size === 0) {
+            setNotice({ kind: 'info', text: t('panel.notice.empty') })
+            setConfirmTrashPurge(false)
+            setConfirmTrashPurgeKeys([])
+            return
+          }
+          if (op === 'purge' && confirmTrashPurge !== true) {
+            setConfirmTrashPurgeKeys([...visibleTrashSelected])
+            setConfirmTrashPurge(true)
+            return
+          }
+          setConfirmTrashPurge(false)
+          setConfirmTrashPurgeKeys([])
+          setPending(['trash-selection'])
+          setNotice(null)
+          const failedKeys = new Set()
+          const succeededKeys = new Set()
+          let restored = 0
+          let purged = 0
+          const failureDetails = []
+          let lastState
+          try {
+            for (const [batch, ids] of groups) {
+              const body = { op, batch, sessionIds: ids }
+              const result = await act(body)
+              const outcome = result?.results?.[0] ?? {}
+              restored += Number(outcome.restored ?? 0)
+              purged += Number(outcome.purged ?? 0)
+              const failures = Array.isArray(outcome.failures) ? outcome.failures : []
+              for (const failure of failures) {
+                if (failure?.sessionId) failedKeys.add(trashKeyOf(batch, failure.sessionId))
+                failureDetails.push(failure)
+              }
+              if (outcome.ok !== true && failures.length === 0 && outcome.error) {
+                failureDetails.push(outcome)
+                for (const id of ids) failedKeys.add(trashKeyOf(batch, id))
+              }
+              for (const id of ids) {
+                const key = trashKeyOf(batch, id)
+                if (!failedKeys.has(key)) succeededKeys.add(key)
+              }
+              if (result?.state !== undefined) lastState = result.state
+            }
+            if (alive.current && lastState !== undefined) setData(lastState)
+            else await load()
+            setTrashSelected((current) => {
+              const next = new Set(current)
+              for (const key of succeededKeys) next.delete(key)
+              return next
+            })
+            const summary =
+              op === 'restore'
+                ? t('panel.trash.restored', { count: restored })
+                : t('panel.trash.purged', { count: purged })
+            if (failureDetails.length > 0) {
+              const errorText = t('panel.notice.firstError', { message: firstFailure(failureDetails) })
+              setNotice({ kind: 'error', text: `${summary} ${errorText}` })
+            } else {
+              setNotice({ kind: 'info', text: summary })
+            }
+            if (succeededKeys.size > 0) refreshSessions()
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause))
+            await load()
+          } finally {
+            if (alive.current) {
+              setPending([])
+              setConfirmTrashPurge(false)
+              setConfirmTrashPurgeKeys([])
+            }
+          }
+        },
+        [confirmTrashPurge, confirmTrashPurgeKeys, load, refreshSessions, t, trashItems, visibleTrashSelected],
       )
 
       const bulkDelete = React.useCallback(() => {
@@ -1067,7 +1621,15 @@ window.__ModuleLoader__.load({
       if (loading && data === null) {
         sections.push(h('div', { className: 'dshsc-skeleton', key: 'loading' }, t('panel.loading')))
       } else if (view.groups.length === 0 && view.archivedGroup === null) {
-        sections.push(h('div', { className: 'dshsc-empty', key: 'empty' }, emptyText()))
+        sections.push(
+          h(EmptyState, {
+            key: 'empty',
+            icon: 'inbox',
+            title: emptyText(),
+            hint:
+              query.trim() === '' && nav.entries.some((entry) => entry.id === currentView) ? t('panel.emptyHint') : undefined,
+          }),
+        )
       } else {
         for (const group of view.groups) {
           const key = group.workspaceId === '' ? '__ungrouped__' : group.workspaceId
@@ -1075,15 +1637,13 @@ window.__ModuleLoader__.load({
             h(GroupCard, {
               key,
               group,
-              archivedGroup: false,
-              compact: view.groups.length === 1 && group.workspaceId !== '',
               selection,
               pending,
               confirming,
               collapsed: collapsedGroups.has(key),
               onToggleCollapse: () => toggleCollapse(key),
               onToggleRow: toggleRow,
-              onToggleGroup: toggleGroup,
+              onPreview: openPreview,
               onArchive,
               onUnarchive,
               onDelete,
@@ -1099,14 +1659,13 @@ window.__ModuleLoader__.load({
             h(GroupCard, {
               key,
               group: view.archivedGroup,
-              archivedGroup: true,
               selection,
               pending,
               confirming,
               collapsed: collapsedGroups.has(key),
               onToggleCollapse: () => toggleCollapse(key),
               onToggleRow: toggleRow,
-              onToggleGroup: toggleGroup,
+              onPreview: openPreview,
               onArchive,
               onUnarchive,
               onDelete,
@@ -1197,21 +1756,141 @@ window.__ModuleLoader__.load({
                         type: 'button',
                         className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
                         disabled: pending.length > 0,
-                        onClick: () =>
-                          runSimple({ op: 'pruneOrphanCache' }, (result) =>
-                            t('panel.cache.done', {
-                              count: result?.removed ?? 0,
-                              size: formatBytes(result?.freed ?? 0) || '0 B',
-                            }),
-                          ),
+                        onClick: () => setConfirmCache(true),
                       },
                       t('panel.cache.action', { count: orphanCache.count }),
                     ),
+                    confirmCache
+                      ? [
+                          h('span', { key: 'warn', className: 'dshsc-confirmText' }, t('panel.cache.confirm', { count: orphanCache.count })),
+                          h(
+                            'button',
+                            {
+                              key: 'confirm',
+                              type: 'button',
+                              className: 'dshsc-btn dshsc-btnSm dshsc-btnSolidDanger',
+                              disabled: pending.length > 0,
+                              onClick: () =>
+                                runSimple({ op: 'pruneOrphanCache' }, (result) =>
+                                  t('panel.cache.done', {
+                                    count: result?.removed ?? 0,
+                                    size: formatBytes(result?.freed ?? 0) || '0 B',
+                                  }),
+                                ),
+                            },
+                            t('panel.action.confirmCache'),
+                          ),
+                          h(
+                            'button',
+                            {
+                              key: 'cancel',
+                              type: 'button',
+                              className: 'dshsc-btn dshsc-btnSm',
+                              disabled: pending.length > 0,
+                              onClick: () => setConfirmCache(false),
+                            },
+                            t('panel.action.cancel'),
+                          ),
+                        ]
+                      : null,
                   ),
                 ),
               )
 
       const trashBatches = data?.trash ?? []
+      // Trash bulk bar: same bottom-dock pattern as the session view's dock, so
+      // both selection toolbars share one position and one button scale. Like the
+      // session dock it only exists once something is selected.
+      const trashDock =
+        trashBatches.length === 0 || trashSelected.size === 0
+          ? null
+          : h(
+              'div',
+              { className: 'dshsc-dock dshsc-dockFoot', key: 'trash-dock' },
+              h(
+                'span',
+                { className: 'dshsc-dockInfo' },
+                t('panel.bulk.selected', { count: visibleTrashSelected.length }),
+              ),
+              hiddenTrashSelected > 0
+                ? h(
+                    'span',
+                    { className: 'dshsc-dockHint' },
+                    t('panel.bulk.hiddenFilter', { count: hiddenTrashSelected }),
+                  )
+                : null,
+              confirmTrashPurge
+                ? h(
+                    'span',
+                    { className: 'dshsc-confirmText' },
+                    t('panel.trash.confirmPurgeSelected', { count: confirmTrashPurgeKeys.length }),
+                  )
+                : null,
+              h('span', { className: 'dshsc-spacer' }),
+              h(
+                'div',
+                { className: 'dshsc-actions' },
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshsc-btn',
+                    disabled: visibleTrashSelected.length === 0 || pending.length > 0,
+                    onClick: () => runTrashSelected('restore'),
+                  },
+                  t('panel.trash.restoreSelected'),
+                ),
+                confirmTrashPurge
+                  ? [
+                      h(
+                        'button',
+                        {
+                          key: 'confirm',
+                          type: 'button',
+                          className: 'dshsc-btn dshsc-btnSolidDanger',
+                          disabled: visibleTrashSelected.length === 0 || pending.length > 0,
+                          onClick: () => runTrashSelected('purge'),
+                        },
+                        t('panel.action.confirmDelete'),
+                      ),
+                      h(
+                        'button',
+                        {
+                          key: 'cancel',
+                          type: 'button',
+                          className: 'dshsc-btn',
+                          disabled: pending.length > 0,
+                          onClick: () => {
+                            setConfirmTrashPurge(false)
+                            setConfirmTrashPurgeKeys([])
+                          },
+                        },
+                        t('panel.action.cancel'),
+                      ),
+                    ]
+                  : h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshsc-btn dshsc-btnSolidDanger',
+                        disabled: visibleTrashSelected.length === 0 || pending.length > 0,
+                        onClick: () => runTrashSelected('purge'),
+                      },
+                      t('panel.trash.purgeSelected'),
+                    ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshsc-btn dshsc-btnGhost',
+                    disabled: pending.length > 0,
+                    onClick: () => setTrashSelected(new Set()),
+                  },
+                  t('panel.action.clear'),
+                ),
+              ),
+            )
+
       const trashSection =
         trashBatches.length === 0
           ? null
@@ -1235,7 +1914,10 @@ window.__ModuleLoader__.load({
                           disabled: pending.length > 0,
                           onClick: () =>
                             runSimple({ op: 'emptyTrash' }, (result) =>
-                              t('panel.trash.purged', { count: result?.purged ?? 0 }),
+                              t('panel.trash.emptied', {
+                                count: result?.purgedSessions ?? result?.purged ?? 0,
+                                batches: result?.purgedBatches ?? 0,
+                              }),
                             ),
                         },
                         t('panel.action.confirmDelete'),
@@ -1278,14 +1960,25 @@ window.__ModuleLoader__.load({
                 ),
               ),
               ...trashBatches.flatMap((batch) => {
-                const busy = pending.includes(batch.batch)
-                const confirmingBatch = purgeTarget === batch.batch
+                const busy = pending.includes(batch.batch) || pending.includes('trash-selection')
                 const time = formatTime(Date.parse(batch.createdAt))
                 const key = batch.batch
+                const batchIds = (batch.items ?? []).map((item) => item.sessionId)
+                const batchKeys = batchIds.map((sessionId) => trashKeyOf(key, sessionId))
+                const selectedInBatch = batchKeys.filter((itemKey) => trashSelected.has(itemKey)).length
+                const allInBatch = batchKeys.length > 0 && selectedInBatch === batchKeys.length
+                const someInBatch = selectedInBatch > 0 && !allInBatch
                 const rowsOut = [
                   h(
                     'div',
-                    { key: key + ':head', className: 'dshsc-row' },
+                    { key: key + ':head', className: 'dshsc-row' + (allInBatch ? ' dshsc-rowSelected' : '') },
+                    h(TriCheck, {
+                      checked: allInBatch,
+                      indeterminate: someInBatch,
+                      disabled: busy || batchIds.length === 0,
+                      label: t('panel.trash.selectBatch'),
+                      onChange: () => toggleTrashBatch(key, batchIds),
+                    }),
                     h(
                       'div',
                       { className: 'dshsc-main dshsc-mainStatic' },
@@ -1305,63 +1998,14 @@ window.__ModuleLoader__.load({
                             size: formatBytes(batch.bytes) || '0 B',
                           }),
                         ),
+                        selectedInBatch > 0
+                          ? h(
+                              'span',
+                              { className: 'dshsc-pill' },
+                              t('panel.trash.batchChecked', { selected: selectedInBatch, count: batch.count }),
+                            )
+                          : null,
                       ),
-                      confirmingBatch
-                        ? h(
-                            'span',
-                            { className: 'dshsc-confirmText' },
-                            t('panel.trash.confirmPurgeBatch', { count: batch.count }),
-                          )
-                        : null,
-                    ),
-                    h(
-                      'div',
-                      { className: 'dshsc-actions' },
-                      h(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'dshsc-btn dshsc-btnSm',
-                          disabled: busy,
-                          onClick: () => runBatch('restore', batch.batch, undefined, batch.count),
-                        },
-                        t('panel.trash.restoreAll'),
-                      ),
-                      confirmingBatch
-                        ? [
-                            h(
-                              'button',
-                              {
-                                key: 'confirm',
-                                type: 'button',
-                                className: 'dshsc-btn dshsc-btnSm dshsc-btnSolidDanger',
-                                disabled: busy,
-                                onClick: () => runBatch('purge', batch.batch, undefined, batch.count),
-                              },
-                              t('panel.action.confirmDelete'),
-                            ),
-                            h(
-                              'button',
-                              {
-                                key: 'cancel',
-                                type: 'button',
-                                className: 'dshsc-btn dshsc-btnSm',
-                                disabled: busy,
-                                onClick: () => setPurgeTarget(null),
-                              },
-                              t('panel.action.cancel'),
-                            ),
-                          ]
-                        : h(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
-                              disabled: busy,
-                              onClick: () => setPurgeTarget(batch.batch),
-                            },
-                            t('panel.trash.purgeAll'),
-                          ),
                     ),
                   ),
                 ]
@@ -1369,10 +2013,21 @@ window.__ModuleLoader__.load({
                   const itemKey = key + ':' + item.sessionId
                   const itemBusy = pending.includes(item.sessionId)
                   const confirmingItem = purgeTarget === itemKey
+                  const itemSelected = trashSelected.has(trashKeyOf(key, item.sessionId))
                   rowsOut.push(
                     h(
                       'div',
-                      { key: itemKey, className: 'dshsc-row dshsc-rowNested' },
+                      {
+                        key: itemKey,
+                        className: 'dshsc-row dshsc-rowNested' + (itemSelected ? ' dshsc-rowSelected' : ''),
+                      },
+                      h(TriCheck, {
+                        checked: itemSelected,
+                        indeterminate: false,
+                        disabled: itemBusy || busy,
+                        label: item.title || t('panel.trash.itemFallback') + ' · ' + shortId(item.sessionId),
+                        onChange: () => toggleTrashItem(key, item.sessionId),
+                      }),
                       h(
                         'div',
                         { className: 'dshsc-main dshsc-mainStatic' },
@@ -1457,13 +2112,22 @@ window.__ModuleLoader__.load({
           ? null
           : h(
               'div',
-              { className: 'dshsc-dock' },
+              { className: 'dshsc-dock dshsc-dockFoot' },
               h('span', { className: 'dshsc-dockInfo' }, t('panel.bulk.selected', { count: selectedIds.length })),
               formatBytes(selectedBytes) === ''
                 ? null
                 : h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.size', { size: formatBytes(selectedBytes) })),
               selectedLive.length > 0
                 ? h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.skipLive', { count: selectedLive.length }))
+                : null,
+              selectedIds.some((id) => !visibleIds.includes(id))
+                ? h(
+                    'span',
+                    { className: 'dshsc-dockHint' },
+                    t('panel.bulk.hiddenFilter', {
+                      count: selectedIds.filter((id) => !visibleIds.includes(id)).length,
+                    }),
+                  )
                 : null,
               confirmBulk
                 ? h('span', { className: 'dshsc-confirmText' }, t('panel.bulk.confirm', { count: deletableIds.length }))
@@ -1589,7 +2253,7 @@ window.__ModuleLoader__.load({
           {
             className: 'dshsc-select',
             value: sort,
-            'aria-label': t('panel.sort.updated'),
+            'aria-label': t('panel.sort.label'),
             onChange: (event) => setSort(event.currentTarget.value),
           },
           h('option', { value: 'updated' }, t('panel.sort.updated')),
@@ -1605,7 +2269,27 @@ window.__ModuleLoader__.load({
 
       const navRail = h(
         'nav',
-        { className: 'dshsc-nav', role: 'tablist', 'aria-label': t('panel.nav.workspaces') },
+        {
+          className: 'dshsc-nav',
+          role: 'tablist',
+          'aria-label': t('panel.nav.workspaces'),
+          onKeyDown: (event) => {
+            const direction = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0
+            if (direction === 0) return
+            const ids = [
+              ...nav.entries.map((entry) => entry.id),
+              ...(nav.stray.length > 0 ? ['__ungrouped__'] : []),
+              '__archived__',
+              '__trash__',
+              ...(cacheAvailable ? ['__cache__'] : []),
+            ]
+            const index = ids.indexOf(currentView)
+            const next = ids[(index + direction + ids.length) % ids.length]
+            if (next === undefined) return
+            event.preventDefault()
+            selectView(next)
+          },
+        },
         h('div', { className: 'dshsc-navSection' }, t('panel.nav.workspaces')),
         ...nav.entries.map((entry) =>
           h(NavItem, {
@@ -1615,7 +2299,8 @@ window.__ModuleLoader__.load({
             count: entry.count,
             title: entry.path || entry.name,
             active: currentView === entry.id,
-            onClick: () => setActiveView(entry.id),
+            muted: entry.count === 0,
+            onClick: () => selectView(entry.id),
           }),
         ),
         nav.stray.length === 0
@@ -1626,46 +2311,67 @@ window.__ModuleLoader__.load({
               meta: formatBytes(strayBytes) || '0 B',
               count: nav.stray.length,
               active: currentView === '__ungrouped__',
-              onClick: () => setActiveView('__ungrouped__'),
+              onClick: () => selectView('__ungrouped__'),
             }),
+        h('div', { className: 'dshsc-navDivider', key: 'divider' }),
+        h('div', { className: 'dshsc-navSection dshsc-navSectionGap', key: 'maintain' }, t('panel.nav.maintain')),
         h(NavItem, {
           key: '__archived__',
           label: t('panel.section.archived'),
+          icon: 'archive',
           count: nav.archivedRows.length,
           active: currentView === '__archived__',
-          onClick: () => setActiveView('__archived__'),
+          onClick: () => selectView('__archived__'),
         }),
-        h('div', { className: 'dshsc-navDivider', key: 'divider' }),
         h(NavItem, {
           key: '__trash__',
           label: t('panel.trash.title'),
+          icon: 'trash',
           count: trashCount,
           warn: trashCount > 0,
           active: currentView === '__trash__',
-          onClick: () => setActiveView('__trash__'),
+          onClick: () => selectView('__trash__'),
         }),
         cacheAvailable
           ? h(NavItem, {
               key: '__cache__',
               label: t('panel.cache.title'),
+              icon: 'cache',
               count: cacheInfo.count,
               warn: cacheInfo.count > 0,
               active: currentView === '__cache__',
-              onClick: () => setActiveView('__cache__'),
+              onClick: () => selectView('__cache__'),
             })
           : null,
       )
 
       const paneContent = []
-      if (currentView === '__trash__') {
+      if (preview !== null) {
+        paneContent.push(
+          h(PreviewPane, {
+            key: 'preview',
+            row: sessionById.get(preview.id),
+            state: preview,
+            confirming,
+            onBack: closePreview,
+            archived: archivedSet.has(preview.id),
+            onArchive,
+            onUnarchive,
+            onDelete,
+            onConfirm,
+            onCancel,
+            t,
+          }),
+        )
+      } else if (currentView === '__trash__') {
         paneContent.push(
           trashSection ??
-            h('div', { className: 'dshsc-empty', key: 'empty-trash' }, t('panel.trash.empty')),
+            h(EmptyState, { key: 'empty-trash', icon: 'trash', title: t('panel.trash.empty') }),
         )
       } else if (currentView === '__cache__') {
         paneContent.push(
           cacheSection ??
-            h('div', { className: 'dshsc-empty', key: 'empty-cache' }, t('panel.nav.emptyCache')),
+            h(EmptyState, { key: 'empty-cache', icon: 'cache', title: t('panel.nav.emptyCache') }),
         )
       } else {
         for (const section of sections) paneContent.push(section)
@@ -1720,11 +2426,16 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dshsc-pane' },
-            sessionView ? h('div', { className: 'dshsc-paneHead' }, toolbar) : null,
-            h('div', { className: 'dshsc-paneBody' }, ...paneContent),
+            sessionView && preview === null ? h('div', { className: 'dshsc-paneHead' }, toolbar) : null,
+            h(
+              'div',
+              { className: 'dshsc-paneBody', role: 'tabpanel', 'aria-label': t('panel.title') },
+              ...paneContent,
+            ),
+            sessionView ? dock : null,
+            currentView === '__trash__' ? trashDock : null,
           ),
         ),
-        dock,
       )
     }
 
@@ -1763,12 +2474,23 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Activate the Client half: dictionaries, the main panel, and the sidebar
-     * entry that selects it.
+     * Activate the Client half: dictionaries, the main panel, the sidebar entry
+     * that selects it, and the Session row's own delete action.
      * @param ctx - Client plugin context.
      */
     function apply(ctx) {
       const t = ctx.locale.bind(NS)
+      /**
+       * Ask the client Session store to re-read the Host list. Without this the
+       * sidebar keeps a row for a Session whose log has already been moved away.
+       */
+      const refreshSessions = () => {
+        try {
+          const sessions = ctx.get('sessions')
+          const pending = sessions?.refresh?.()
+          if (pending !== undefined && typeof pending.then === 'function') pending.catch(() => {})
+        } catch {}
+      }
       ctx.effect(() => {
         const disposers = []
         for (const pair of [
@@ -1781,7 +2503,10 @@ window.__ModuleLoader__.load({
         }
         disposers.push(
           ctx.slots.inject('main', () =>
-            ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({ t }) }, CleanupPage),
+            ctx.slots.register(
+              { name: 'main', key: PANEL_ID, locale: NS, inject: () => ({ t, refreshSessions }) },
+              CleanupPage,
+            ),
           ),
         )
         disposers.push(
@@ -1792,7 +2517,67 @@ window.__ModuleLoader__.load({
             ),
           ),
         )
+        // The glyph the Session menu row borrows; `contextMenu.icon` hands the
+        // component the action's icon descriptor, which this glyph ignores.
+        disposers.push(
+          ctx.slots.inject('contextMenu.icon', () =>
+            ctx.slots.register({ name: 'contextMenu.icon', key: MENU_ICON_KEY }, MenuTrashIcon),
+          ),
+        )
+        // The right-click / "..." menu on a Session row. Registered through the
+        // data-driven menu service, so it inherits the built-in menu's styling and
+        // dismissal instead of rendering a competing popover.
+        //
+        // `contextMenus` is provided by another plugin's boot, so it may not exist
+        // yet when this one activates: retry briefly instead of losing the row for
+        // the whole session, and never fail activation when it stays absent.
+        let disposed = false
+        let menuReady = false
+        let retry = null
+        let attempts = 0
+        const registerMenu = () => {
+          retry = null
+          if (disposed || menuReady) return
+          const menus = ctx.get('contextMenus')
+          if (typeof menus?.register !== 'function') {
+            attempts += 1
+            if (attempts <= MAX_MENU_ATTEMPTS) retry = setTimeout(registerMenu, attempts <= 10 ? 200 : 1000)
+            return
+          }
+          try {
+            disposers.push(
+              menus.register({
+                id: 'session-cleanup.delete',
+                target: 'session',
+                order: 700,
+                resolve: (target) => {
+                  const sessionId = typeof target?.sessionId === 'string' ? target.sessionId : ''
+                  if (sessionId === '') return []
+                  return [
+                    {
+                      id: 'delete',
+                      label: t('menu.delete'),
+                      icon: { key: MENU_ICON_KEY },
+                      danger: true,
+                      separatorBefore: true,
+                      // The footer block holds the destructive tail: built-in archive
+                      // first (order 600), this delete last (order 700).
+                      afterContent: true,
+                      run: () => {
+                        void deleteFromMenu(ctx, t, sessionId, target?.displayTitle)
+                      },
+                    },
+                  ]
+                },
+              }),
+            )
+            menuReady = true
+          } catch {}
+        }
+        registerMenu()
         return () => {
+          disposed = true
+          if (retry !== null) clearTimeout(retry)
           for (const dispose of disposers) {
             try {
               dispose()

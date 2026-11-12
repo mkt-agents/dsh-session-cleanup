@@ -87,6 +87,8 @@ const require = (name) => {
 }
 
 const requests = []
+let menuFailure = null
+const menuState = { registration: null, notifications: [], refreshed: 0 }
 const hostState = {
   workspaces: [
     { workspaceId: 'ws-1', path: 'D:\\demo\\alpha', title: 'alpha', sessionIds: ['s1', 's2', 's3'] },
@@ -125,19 +127,55 @@ const hostState = {
   },
 }
 
+const previews = {
+  s1: {
+    sessionId: 's1',
+    cwd: 'D:\\demo\\alpha',
+    createdAt: 1794041000000,
+    sizeBytes: 12 * 1024 * 1024,
+    turnCount: 9,
+    items: [
+      { role: 'user', seq: 1, text: 'why is this session so large?' },
+      { role: 'assistant', seq: 2, text: 'Because every tool result stays in the log.' },
+    ],
+    truncated: true,
+  },
+  s2: {
+    sessionId: 's2',
+    cwd: 'D:\\demo\\alpha',
+    createdAt: 1794040000000,
+    sizeBytes: 2048,
+    turnCount: 1,
+    items: [{ role: 'user', seq: 1, text: 'short one' }],
+    truncated: false,
+  },
+}
+
 globalThis.fetch = async (url, init) => {
   requests.push({ url, init })
+  if (typeof url === 'string' && url.includes('/preview')) {
+    const id = new URL(url, 'http://127.0.0.1:1').searchParams.get('id')
+    const preview = previews[id]
+    if (preview === undefined) {
+      return { ok: false, status: 404, text: async () => JSON.stringify({ error: 'session-not-found' }) }
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify(preview) }
+  }
   const body = init?.body === undefined ? undefined : JSON.parse(init.body)
   if (body === undefined) {
     return { ok: true, status: 200, text: async () => JSON.stringify(hostState) }
   }
+  const outcome =
+    body.op === 'delete' && menuFailure !== null
+      ? { ok: false, skipped: true, error: menuFailure }
+      : { ok: true, restored: 2, purged: 1, removed: 131, freed: 1625728, pruned: 1 }
   return {
     ok: true,
     status: 200,
     text: async () =>
       JSON.stringify({
         op: body.op,
-        results: [{ ok: true, restored: 2, purged: 1, removed: 131, freed: 1625728, pruned: 1 }],
+        results: [outcome],
         pruned: 1,
         removed: 131,
         freed: 1625728,
@@ -180,6 +218,24 @@ const ctx = {
   effect: (fn) => {
     fn()
   },
+  get: (key) =>
+    ({
+      contextMenus: {
+        register: (input) => {
+          menuState.registration = input
+          return () => {}
+        },
+        notify: (text, success) => {
+          menuState.notifications.push({ text, success: success === true })
+        },
+      },
+      sessions: {
+        refresh: async () => {
+          menuState.refreshed += 1
+        },
+        binding: () => undefined,
+      },
+    })[key],
 }
 mod.apply(ctx)
 
@@ -221,13 +277,42 @@ const check = (name, condition, detail) => results.push({ name, ok: condition ==
 let tree = null
 let pending = false
 
+const documentListeners = new Map()
+if (typeof globalThis.document === 'undefined' || typeof globalThis.document.addEventListener !== 'function') {
+  globalThis.document = {
+    addEventListener(type, fn) {
+      const list = documentListeners.get(type) ?? []
+      list.push(fn)
+      documentListeners.set(type, list)
+    },
+    removeEventListener(type, fn) {
+      const list = documentListeners.get(type) ?? []
+      documentListeners.set(type, list.filter((item) => item !== fn))
+    },
+    querySelector() {
+      return null
+    },
+    dispatchEvent(event) {
+      for (const fn of documentListeners.get(event.type) ?? []) fn(event)
+      return true
+    },
+  }
+}
+
 async function renderOnce() {
   pending = false
   scheduleRender = () => {
     pending = true
   }
   cursor = 0
-  tree = expand(Page({ t: ctx.locale.bind('session-cleanup') }))
+  tree = expand(
+    Page({
+      t: ctx.locale.bind('session-cleanup'),
+      refreshSessions: () => {
+        menuState.clientRefreshes = (menuState.clientRefreshes ?? 0) + 1
+      },
+    }),
+  )
   for (let tick = 0; tick < 8; tick += 1) {
     await Promise.resolve()
     await new Promise((resolve) => setTimeout(resolve, 2))
@@ -312,10 +397,12 @@ check('pinned badge', text.includes('已置顶'))
 check('search placeholder', find(tree, (node) => node.props?.placeholder === '搜索标题、ID 或路径').length === 1)
 check('meta row merges subtitle and stats', find(tree, (node) => node.props?.className === 'dshsc-metaRow').length === 1)
 check('size column rendered per row', find(tree, (node) => typeof node.props?.className === 'string' && node.props.className.includes('dshsc-sizeCell')).length >= 2)
-check('compact head shows count text', find(tree, (node) => node.props?.className === 'dshsc-countText').length === 1)
-check('compact head drops path chip', find(tree, (node) => node.props?.className === 'dshsc-cardPath').length === 0)
+check('head drops count text', find(tree, (node) => node.props?.className === 'dshsc-countText').length === 0)
+check('head carries size and length', find(tree, (node) => node.props?.className === 'dshsc-headStats').length === 1 && text.includes('2 个会话'), text.slice(0, 600))
+check('head drops path chip', find(tree, (node) => node.props?.className === 'dshsc-cardPath').length === 0)
 check('default view hides archived rows', !text.includes('Archived one'), text.slice(0, 400))
 check('default view hides other workspaces', !text.includes('Stray'), text.slice(0, 400))
+check('no raw locale keys in workspace view', !/panel\.[a-zA-Z]/.test(text), text.slice(0, 400))
 
 const rowCount = find(tree, (node) => typeof node.props?.className === 'string' && node.props.className.includes('dshsc-row')).length
 check('row count sane', rowCount === 2, rowCount)
@@ -334,7 +421,21 @@ text = textOf(tree)
 check('archived view shows archived row', text.includes('Archived one'), text.slice(0, 300))
 check('archived view offers restore', find(tree, byText('恢复')).length === 1)
 check('archived view shows stale-archive card', text.includes('清理这 1 条'), text.slice(0, 600))
-check('archived head keeps path slot', find(tree, (node) => node.props?.className === 'dshsc-cardPath').length === 1)
+check('no raw locale keys in archived view', !/panel\.[a-zA-Z]/.test(text), text.slice(0, 400))
+check('archived head is a slim stats bar', find(tree, (node) => node.props?.className === 'dshsc-headStats').length === 1 && find(tree, (node) => node.props?.className === 'dshsc-cardPath').length === 0)
+const archivedTitle = find(tree, (node) => node.props?.className === 'dshsc-main' && textOf(node).includes('Archived one'))[0]
+check('archived row opens preview', archivedTitle !== undefined)
+archivedTitle.props.onClick()
+await settle()
+text = textOf(tree)
+check('archived preview offers unarchive', find(tree, byText('恢复')).length >= 1, text.slice(0, 400))
+check('archived preview hides the archive action', find(tree, byText('归档')).length === 0, text.slice(0, 400))
+const unarchiveButton = find(tree, byText('恢复'))[0]
+unarchiveButton.props.onClick()
+await settle()
+check('archived preview posts unarchive', requests.some((entry) => entry.init?.body?.includes('"op":"unarchive"') && entry.init.body.includes('"s3"')))
+find(tree, byText('返回'))[0]?.props?.onClick?.()
+await settle()
 
 await clickNav('alpha')
 text = textOf(tree)
@@ -354,12 +455,35 @@ const titles = find(tree, (node) => typeof node.props?.className === 'string' &&
 check('size sort puts heavy first', textOf(titles[0]).includes('Heavy session'), titles.slice(0, 3).map(textOf))
 
 const groupChecks = find(tree, (node) => node.props?.['aria-label'] === '选择该分组内的会话')
-check('group checkbox present', groupChecks.length >= 1, groupChecks.length)
-groupChecks[0].props.onChange()
+check('card head has no select-all', groupChecks.length === 0, groupChecks.length)
+const selectAllBox = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === '全选')[0]
+check('toolbar select-all present', selectAllBox !== undefined)
+selectAllBox.props.onChange()
 await settle()
 text = textOf(tree)
 check('dock appears with selection', text.includes('已选'), text.slice(-300))
 check('dock archive action', text.includes('归档所选'))
+
+await clickNav('beta')
+text = textOf(tree)
+check(
+  'switching workspace clears hidden selection',
+  find(tree, (node) => node.props?.className === 'dshsc-dock').length === 0,
+  text.slice(-300),
+)
+await clickNav('alpha')
+text = textOf(tree)
+check(
+  'selection stays cleared after returning to the workspace',
+  find(tree, (node) => node.props?.className === 'dshsc-dock').length === 0,
+  text.slice(-300),
+)
+const selectAllAgain = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === '全选')[0]
+check('select-all still present after a view switch', selectAllAgain !== undefined)
+selectAllAgain.props.onChange()
+await settle()
+text = textOf(tree)
+check('selection can be restored after a view switch', text.includes('已选'))
 
 const clearButton = find(tree, byText('清空选择'))[0]
 check('clear button present', clearButton !== undefined)
@@ -391,6 +515,7 @@ check('delete carried labels', deleteRequest !== undefined && deleteRequest.init
 await clickNav('回收站')
 text = textOf(tree)
 check('trash pane lists batch items', text.includes('Deleted A'), text.slice(0, 300))
+check('no raw locale keys in trash view', !/panel\.[a-zA-Z]/.test(text), text.slice(0, 400))
 check('trash head shows time instead of folder name', !text.includes('session-cleanup-2026'), text.slice(0, 300))
 check('trash pane hides the session toolbar', find(tree, (node) => node.props?.className === 'dshsc-paneHead').length === 0)
 
@@ -419,9 +544,378 @@ const cacheButton = find(tree, byTextPrefix('删除这'))
 check('orphan cache button', cacheButton.length === 1, cacheButton.length)
 cacheButton[0].props.onClick()
 await settle()
+text = textOf(tree)
+check('orphan cache confirms first', text.includes('无法撤销') || text.includes('确认清理'), text.slice(-400))
+check('orphan cache did not post on first click', !requests.some((entry) => entry.init?.body?.includes('pruneOrphanCache')))
+const cacheConfirm = find(tree, byText('确认清理'))[0]
+check('orphan cache confirm button', cacheConfirm !== undefined)
+cacheConfirm.props.onClick()
+await settle()
 check('orphan cache posted', requests.some((entry) => entry.init?.body?.includes('pruneOrphanCache')))
 text = textOf(tree)
 check('freed notice shown', text.includes('已删除') && /1\.\d+ MB/.test(text), text.slice(-300))
+
+// Session row context menu: the same reversible delete, offered from the sidebar.
+check('menu registered for the session target', menuState.registration?.target === 'session')
+check('menu icon registered under own key', registered['contextMenu.icon:session-cleanup.delete'] !== undefined)
+const menuRows = menuState.registration.resolve({ kind: 'session', sessionId: 's9', displayTitle: 'Menu target' })
+check('menu offers exactly one row', menuRows.length === 1, menuRows)
+check(
+  'menu row is a separated danger footer action',
+  menuRows[0]?.danger === true && menuRows[0]?.separatorBefore === true && menuRows[0]?.afterContent === true,
+)
+check('menu row label', menuRows[0]?.label === '删除会话', menuRows[0]?.label)
+const refreshedBeforeMenu = menuState.refreshed
+const requestsBeforeMenu = requests.length
+menuRows[0].run()
+await new Promise((resolve) => setTimeout(resolve, 25))
+const menuDelete = requests.filter((entry) => entry.init?.body?.includes('"sessionIds":["s9"]')).pop()
+check('menu delete posts on the first click', menuDelete !== undefined, requests.map((entry) => entry.init?.body).filter(Boolean).slice(-3))
+check('menu delete carries the title', menuDelete?.init?.body.includes('"s9":"Menu target"'), menuDelete?.init?.body)
+check('menu success notice', menuState.notifications.some((n) => n.success === true && n.text === '已移入回收站。'))
+check('menu refreshes the sidebar list', menuState.refreshed > refreshedBeforeMenu, menuState.refreshed)
+
+// A live Session is refused by the Host; the menu must say why and leave the list alone.
+menuFailure = 'session-in-use'
+const refusedRows = menuState.registration.resolve({ kind: 'session', sessionId: 's10', displayTitle: 'Open one' })
+const refreshedBeforeRefusal = menuState.refreshed
+refusedRows[0].run()
+await new Promise((resolve) => setTimeout(resolve, 25))
+check(
+  'menu reports the in-use refusal',
+  menuState.notifications.some((n) => n.success === false && n.text.includes('正在使用中')),
+  menuState.notifications.slice(-2),
+)
+check('menu keeps the list after a refusal', menuState.refreshed === refreshedBeforeRefusal, menuState.refreshed)
+menuFailure = null
+
+// Session preview: the row title opens the stored transcript instead of selecting.
+await clickNav('alpha')
+const heavyRow = find(tree, (node) => node.props?.className === 'dshsc-main' && textOf(node).includes('Heavy session'))[0]
+check('row title is the preview trigger', heavyRow !== undefined)
+heavyRow.props.onClick()
+await settle()
+text = textOf(tree)
+check('preview shows the transcript', text.includes('why is this session so large?'), text.slice(0, 300))
+check('preview labels the roles', text.includes('你') && text.includes('助手'), text.slice(0, 300))
+check('preview marks truncation', text.includes('只显示最近 2 条消息'), text.slice(0, 600))
+check('preview shows the turn count', text.includes('9 轮对话'), text.slice(0, 600))
+check('preview hides the list toolbar', find(tree, (node) => node.props?.className === 'dshsc-paneHead').length === 0)
+check('preview offers a way back', find(tree, byText('返回')).length === 1)
+document.dispatchEvent({ type: 'keydown', key: 'Escape', preventDefault() {} })
+await settle()
+check('escape closes the preview', find(tree, byText('返回')).length === 0)
+// Re-open so later preview tests still have a transcript to go back from.
+heavyRow.props.onClick()
+await settle()
+check('preview reopened after escape', find(tree, byText('返回')).length === 1)
+
+find(tree, byText('返回'))[0].props.onClick()
+await settle()
+check('back returns to the list', find(tree, (node) => node.props?.className === 'dshsc-paneHead').length === 1)
+
+// Deleting from the preview keeps the two-step confirmation and closes the view.
+const coldRow = find(tree, (node) => node.props?.className === 'dshsc-main' && textOf(node).includes('Pinned small'))[0]
+coldRow.props.onClick()
+await settle()
+check('preview opens for a cold session', textOf(tree).includes('short one'), textOf(tree).slice(0, 200))
+const refreshesBefore = menuState.clientRefreshes ?? 0
+find(tree, byText('删除'))[0].props.onClick()
+await settle()
+check('preview delete arms confirmation', textOf(tree).includes('确认删除'), textOf(tree).slice(0, 200))
+find(tree, byText('确认删除'))[0].props.onClick()
+await settle()
+const previewDelete = requests.filter((entry) => entry.init?.body?.includes('"sessionIds":["s2"]')).pop()
+check('preview delete posted', previewDelete !== undefined, previewDelete?.init?.body)
+check('preview closes after delete', find(tree, byText('返回')).length === 0)
+check(
+  'panel refreshes the client session list',
+  (menuState.clientRefreshes ?? 0) > refreshesBefore,
+  [refreshesBefore, menuState.clientRefreshes],
+)
+
+// The rail must drive the pane: opening a preview and then switching workspace
+// closes the preview instead of leaving a stale transcript on screen.
+const alphaRow = find(tree, (node) => node.props?.className === 'dshsc-main' && textOf(node).includes('Heavy session'))[0]
+alphaRow.props.onClick()
+await settle()
+check('preview reopened for the rail switch test', find(tree, byText('返回')).length === 1)
+await clickNav('beta')
+check('workspace switch closes the preview', find(tree, byText('返回')).length === 0, textOf(tree).slice(-200))
+check('workspace switch shows the new list', textOf(tree).includes('未命名会话') || textOf(tree).includes('s4'), textOf(tree).slice(-300))
+check('workspace switch keeps the rail selection', navItem('beta')?.props['aria-current'] === true)
+await clickNav('回收站')
+check('trash switch closes the preview', find(tree, byText('返回')).length === 0)
+
+
+// Targeted R4: batch partial-failure notices keep the success count and nested reasons.
+const originalFetch = globalThis.fetch
+globalThis.fetch = async (url, init) => {
+  const body = init?.body ? JSON.parse(init.body) : null
+  if (body && body.op === 'restore') {
+    requests.push({ url, init })
+    return {
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          results: [{ ok: false, restored: 1, failures: [{ sessionId: 'd2', error: 'already-exists' }] }],
+          restored: 1,
+          state: hostState,
+        }),
+    }
+  }
+  return originalFetch(url, init)
+}
+await clickNav('回收站')
+const r4Restore = find(tree, byText('还原'))[0]
+r4Restore.props.onClick()
+await settle()
+text = textOf(tree)
+check('R4 partial restore surfaces nested error reason', text.includes('already-exists'), text.slice(-400))
+check('R4 partial restore keeps the successful count', text.includes('已还原 1'), text.slice(-400))
+globalThis.fetch = originalFetch
+
+
+// Recycle-bin checkbox selection (new feature; distinct from R1-R5).
+// The bulk dock follows the session view's interaction: it only exists once
+// something is checked, instead of idling with disabled buttons.
+check(
+  'trash bulk dock is hidden when nothing is checked',
+  find(tree, byText('还原所选'))[0] === undefined && find(tree, byText('永久删除所选'))[0] === undefined,
+)
+check('empty recycle bin remains independent', find(tree, byText('清空回收站')).length === 1)
+check('legacy batch-wide restore all is gone', find(tree, byText('整批还原')).length === 0)
+check('legacy batch-wide purge all is gone', find(tree, byText('整批清除')).length === 0)
+const batchSelect = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === '全选该批次')[0]
+check('batch select-all checkbox is present', batchSelect !== undefined)
+const itemCheckA = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0]
+check('per-item trash checkbox is present', itemCheckA !== undefined)
+itemCheckA.props.onChange()
+await settle()
+check('checking one item enables selected actions', find(tree, byText('还原所选'))[0]?.props.disabled === false)
+check('checking one item shows the selected count', textOf(tree).includes('已选 1'), textOf(tree).slice(-400))
+const mixedBatch = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === '全选该批次')[0]
+check(
+  'batch select-all is indeterminate after a partial selection',
+  mixedBatch?.props['aria-checked'] === 'mixed' && mixedBatch?.props['data-indeterminate'] === 'true',
+  mixedBatch?.props,
+)
+find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0].props.onChange()
+await settle()
+check(
+  'clearing the last item hides the bulk dock again',
+  find(tree, byText('还原所选'))[0] === undefined && find(tree, byText('永久删除所选'))[0] === undefined,
+)
+find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === '全选该批次')[0].props.onChange()
+await settle()
+check(
+  'batch select-all checks every session in the batch',
+  find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0]?.props.checked === true &&
+    find(tree, (node) => node.props?.className === 'dshsc-check' && String(node.props?.['aria-label'] ?? '').includes('d2'))[0]?.props.checked === true,
+)
+check('batch select-all shows the batch count', textOf(tree).includes('已选 2'), textOf(tree).slice(-400))
+const firstBatch = hostState.trash[0]
+hostState.trash = [
+  {
+    ...firstBatch,
+    count: firstBatch.items.length + 1,
+    items: [
+      ...firstBatch.items,
+      { sessionId: 'd-ghost', cwdDir: '', title: 'Ghost New', size: 1 },
+    ],
+  },
+]
+find(tree, byText('刷新'))[0].props.onClick()
+await settle()
+check(
+  'a newly appeared batch item stays unselected after a prior select-all',
+  find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Ghost New')[0]?.props.checked !== true &&
+    find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0]?.props.checked === true &&
+    find(tree, (node) => node.props?.className === 'dshsc-check' && String(node.props?.['aria-label'] ?? '').includes('d2'))[0]?.props.checked === true,
+)
+check('select-all count does not absorb the unselected new item', textOf(tree).includes('已选 2') && !textOf(tree).includes('已选 3'), textOf(tree).slice(-400))
+const beforeWhole = requests.length
+find(tree, byText('还原所选'))[0].props.onClick()
+await settle()
+const wholeRestore = requests.slice(beforeWhole).find((entry) => entry.init?.body?.includes('"op":"restore"'))
+const wholeBody = wholeRestore === undefined ? {} : JSON.parse(wholeRestore.init.body)
+check(
+  'batch select-all restore posts explicit selected ids',
+  wholeRestore !== undefined &&
+    wholeBody.batch === 'session-cleanup-20261107-120000-000' &&
+    Array.isArray(wholeBody.sessionIds) &&
+    [...wholeBody.sessionIds].sort().join(',') === 'd1,d2',
+  wholeRestore?.init?.body,
+)
+check(
+  'batch select-all restore omits the unselected newly appeared item',
+  wholeRestore !== undefined && !String(wholeRestore.init.body).includes('d-ghost'),
+  wholeRestore?.init?.body,
+)
+check('successful batch restore hides the bulk dock', find(tree, byText('还原所选'))[0] === undefined)
+
+find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0].props.onChange()
+await settle()
+const beforeOne = requests.length
+find(tree, byText('还原所选'))[0].props.onClick()
+await settle()
+const oneRestore = requests.slice(beforeOne).find((entry) => entry.init?.body?.includes('"op":"restore"'))
+check(
+  'partial restore posts only the checked session',
+  oneRestore !== undefined && oneRestore.init.body.includes('"sessionIds":["d1"]'),
+  oneRestore?.init?.body,
+)
+
+find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0].props.onChange()
+await settle()
+const beforePurgeArm = requests.filter((entry) => entry.init?.body).length
+find(tree, byText('永久删除所选'))[0].props.onClick()
+await settle()
+check(
+  'selected purge arms confirmation without posting',
+  requests.filter((entry) => entry.init?.body).length === beforePurgeArm && textOf(tree).includes('无法恢复') && textOf(tree).includes('1'),
+  textOf(tree).slice(-400),
+)
+find(tree, byText('取消'))[0].props.onClick()
+await settle()
+check(
+  'cancelling selected purge posts nothing',
+  requests.filter((entry) => entry.init?.body).length === beforePurgeArm && find(tree, byText('永久删除所选')).length === 1,
+)
+find(tree, byText('永久删除所选'))[0].props.onClick()
+await settle()
+const d2Box = find(tree, (node) => node.props?.className === 'dshsc-check' && String(node.props?.['aria-label'] ?? '').includes('d2'))[0]
+d2Box.props.onChange()
+await settle()
+check(
+  'changing the selection while purge is armed cancels confirmation',
+  find(tree, byText('永久删除所选')).length === 1 && find(tree, byText('确认删除')).length === 0 &&
+    requests.filter((entry) => entry.init?.body).length === beforePurgeArm,
+  textOf(tree).slice(-400),
+)
+d2Box.props.onChange()
+await settle()
+find(tree, byText('永久删除所选'))[0].props.onClick()
+await settle()
+hostState.trash = hostState.trash.map((batch) =>
+  batch.batch !== 'session-cleanup-20261107-120000-000'
+    ? batch
+    : {
+        ...batch,
+        count: (batch.items ?? []).length + 1,
+        items: [...(batch.items ?? []), { sessionId: 'd-ghost2', cwdDir: '', title: 'Ghost Two', size: 1 }],
+      },
+)
+find(tree, byText('刷新'))[0].props.onClick()
+await settle()
+check(
+  'an unselected item appearing during confirmation does not change the confirmed count',
+  find(tree, byText('确认删除')).length === 1 && textOf(tree).includes('无法恢复') && textOf(tree).includes('所选的 1 个会话'),
+  textOf(tree).slice(-400),
+)
+check(
+  'the newly appeared item is not checked during confirmation',
+  find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Ghost Two')[0]?.props.checked !== true,
+)
+const beforePurge = requests.length
+find(tree, byText('确认删除'))[0].props.onClick()
+await settle()
+const selectedPurge = requests.slice(beforePurge).find((entry) => entry.init?.body?.includes('"op":"purge"'))
+const purgeBody = selectedPurge === undefined ? {} : JSON.parse(selectedPurge.init.body)
+check(
+  'confirming selected purge posts only the frozen session ids',
+  selectedPurge !== undefined &&
+    Array.isArray(purgeBody.sessionIds) &&
+    purgeBody.sessionIds.join(',') === 'd1' &&
+    !String(selectedPurge.init.body).includes('d-ghost2') &&
+    !String(selectedPurge.init.body).includes('"d2"'),
+  selectedPurge?.init?.body,
+)
+
+const fetchAfterUi = globalThis.fetch
+globalThis.fetch = async (url, init) => {
+  const body = init?.body ? JSON.parse(init.body) : null
+  if (body && body.op === 'restore') {
+    requests.push({ url, init })
+    return {
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          results: [{ ok: false, restored: 1, failures: [{ sessionId: 'd2', error: 'already-exists' }] }],
+          restored: 1,
+          state: hostState,
+        }),
+    }
+  }
+  return fetchAfterUi(url, init)
+}
+find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === '全选该批次')[0].props.onChange()
+await settle()
+find(tree, byText('还原所选'))[0].props.onClick()
+await settle()
+check('selected restore partial failure keeps the success count', textOf(tree).includes('已还原 1'), textOf(tree).slice(-400))
+check('selected restore partial failure surfaces the host conflict', textOf(tree).includes('already-exists'), textOf(tree).slice(-400))
+check(
+  'successful trash selection is cleared after a partial restore',
+  find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0]?.props.checked === false,
+)
+check(
+  'failed trash selection remains for retry',
+  find(tree, (node) => node.props?.className === 'dshsc-check' && String(node.props?.['aria-label'] ?? '').includes('d2'))[0]?.props.checked === true,
+)
+globalThis.fetch = fetchAfterUi
+
+hostState.trash = [
+  ...hostState.trash,
+  {
+    batch: 'session-cleanup-20261108-120000-000',
+    createdAt: '2026-11-08T04:00:00.000Z',
+    count: 1,
+    bytes: 1024,
+    items: [{ sessionId: 'd1', cwdDir: '--D-demo-beta--', title: 'Other A', size: 1024 }],
+  },
+]
+find(tree, byText('刷新'))[0].props.onClick()
+await settle()
+const leftoverFailed = find(tree, (node) => node.props?.className === 'dshsc-check' && String(node.props?.['aria-label'] ?? '').includes('d2'))[0]
+if (leftoverFailed?.props.checked === true) {
+  leftoverFailed.props.onChange()
+  await settle()
+}
+const otherA = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Other A')[0]
+const firstA = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0]
+check('cross-batch rows with the same sessionId stay distinct', otherA !== undefined && firstA !== undefined)
+otherA.props.onChange()
+await settle()
+check(
+  'checking one d1 does not select the other batch',
+  find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0]?.props.checked !== true &&
+    find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Other A')[0]?.props.checked === true,
+)
+const beforeCross = requests.length
+find(tree, byText('还原所选'))[0].props.onClick()
+await settle()
+const crossRestore = requests.slice(beforeCross).find((entry) => entry.init?.body?.includes('"op":"restore"'))
+check(
+  'cross-batch restore only posts the checked batch',
+  crossRestore !== undefined &&
+    crossRestore.init.body.includes('session-cleanup-20261108-120000-000') &&
+    !crossRestore.init.body.includes('session-cleanup-20261107-120000-000'),
+  crossRestore?.init?.body,
+)
+
+find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0].props.onChange()
+await settle()
+check('selection can be armed before a view switch', find(tree, byText('还原所选'))[0]?.props.disabled === false)
+await clickNav('alpha')
+await clickNav('回收站')
+check(
+  'switching views clears the trash selection',
+  find(tree, byText('还原所选'))[0] === undefined &&
+    find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Deleted A')[0]?.props.checked !== true,
+)
 
 const summary = results.map((row) => `${row.ok ? 'PASS' : 'FAIL'}  ${row.name}${row.ok ? '' : '  -> ' + JSON.stringify(row.detail)}`)
 console.log(summary.join('\n'))

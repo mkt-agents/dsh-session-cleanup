@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-session-cleanup",
-  "version": "1.3.0",
+  "version": "1.5.1",
   "private": true,
   "type": "module",
   "description": "Sidebar session cleanup panel: sort sessions by size, archive them, delete them into an undoable recycle bin, and clear orphaned projection cache.",
@@ -27,7 +27,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node test/host.test.mjs && node test/client.test.mjs"
+    "test": "node test/host.test.mjs && node test/client.test.mjs && node test/independent-host.mjs && node test/independent-client.mjs",
+    "test:independent": "node test/independent-host.mjs && node test/independent-client.mjs"
   },
   "exports": {
     ".": "./index.js",

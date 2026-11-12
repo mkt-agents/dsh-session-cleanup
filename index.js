@@ -25,7 +25,16 @@ import path from 'node:path'
 
 const ROUTE_STATE = '/dsh-session-cleanup/state'
 const ROUTE_ACTION = '/dsh-session-cleanup/action'
+const ROUTE_PREVIEW = '/dsh-session-cleanup/preview'
 const MAX_BODY_BYTES = 64 * 1024
+/** Events read from the tail of one log for the preview transcript. */
+const PREVIEW_EVENTS = 400
+/** Messages kept after filtering one preview read. */
+const PREVIEW_ITEMS = 12
+/** Turns kept from the cached outline. */
+const PREVIEW_TURNS = 6
+/** Characters kept per previewed message. */
+const PREVIEW_CHARS = 280
 const MAX_LABEL_CHARS = 200
 const MOVE_ATTEMPTS = 8
 const MOVE_RETRY_MS = 150
@@ -48,6 +57,7 @@ export function apply(ctx) {
     const disposers = [
       ctx.webServer.register({ kind: 'exact', path: ROUTE_STATE, handler: guarded(ctx, handleState) }),
       ctx.webServer.register({ kind: 'exact', path: ROUTE_ACTION, handler: guarded(ctx, handleAction) }),
+      ctx.webServer.register({ kind: 'exact', path: ROUTE_PREVIEW, handler: guarded(ctx, handlePreview) }),
     ]
     return () => {
       for (const dispose of disposers) {
@@ -60,14 +70,14 @@ export function apply(ctx) {
 }
 
 /**
- * Wrap one handler with the method/origin checks both routes share.
+ * Wrap one handler with the method/origin checks the routes share.
  * @param ctx - Host plugin context.
  * @param handler - The route's own handler.
  * @returns the composed handler.
  */
 function guarded(ctx, handler) {
   return async (request, response) => {
-    const expected = handler === handleState ? 'GET' : 'POST'
+    const expected = handler === handleAction ? 'POST' : 'GET'
     if (request.method !== expected) {
       response.writeHead(405, { allow: expected })
       response.end()
@@ -93,6 +103,212 @@ function guarded(ctx, handler) {
  */
 async function handleState(ctx, request, response) {
   sendJson(response, 200, await readState(ctx))
+}
+
+/**
+ * Answer one session preview read: the tail of the stored log, reduced to the
+ * user and assistant text a person needs to recognise the conversation.
+ * @param ctx - Host plugin context.
+ * @param request - Incoming GET carrying `?id=`.
+ * @param response - Response to complete.
+ */
+async function handlePreview(ctx, request, response) {
+  let id = ''
+  try {
+    id = new URL(request.url ?? '/', 'http://localhost').searchParams.get('id') ?? ''
+  } catch {
+    id = ''
+  }
+  if (id === '') {
+    sendJson(response, 400, { error: 'id is required' })
+    return
+  }
+  const preview = await readPreview(ctx, id)
+  if (preview === undefined) {
+    sendJson(response, 404, { error: 'session-not-found' })
+    return
+  }
+  sendJson(response, 200, preview)
+}
+
+/**
+ * Read one stored Session's tail without making it live.
+ *
+ * The projection cache already holds the turn outline the sidebar list is built
+ * from, so the common path costs one small JSON read instead of parsing a whole
+ * log. A missing or stale cache falls back to reading the log from the start,
+ * bounded by PREVIEW_EVENTS.
+ * @param ctx - Host plugin context.
+ * @param sessionId - Session to read.
+ * @returns the preview payload, or undefined when the log is gone.
+ */
+async function readPreview(ctx, sessionId) {
+  const persistence = ctx.get('sessionPersistence')
+  if (typeof persistence?.stat !== 'function' || typeof persistence?.open !== 'function') return undefined
+  const signal = timeoutSignal(STATE_TIMEOUT_MS)
+  let snapshot
+  try {
+    snapshot = await persistence.stat(sessionId, { signal })
+  } catch {
+    return undefined
+  }
+  if (snapshot === undefined) return undefined
+  const header = snapshot.header
+  const base = {
+    sessionId,
+    cwd: typeof header?.cwd === 'string' ? header.cwd : '',
+    createdAt: Number(header?.createdAt ?? 0) || 0,
+    sizeBytes: Number(snapshot.sizeBytes ?? 0) || 0,
+  }
+
+  const turns = await readTurnOutline(ctx, sessionId, header)
+  if (turns !== undefined && turns.length > 0) {
+    const kept = turns.slice(-PREVIEW_TURNS)
+    const items = []
+    for (const turn of kept) {
+      const seq = Number(turn?.seq ?? 0) || 0
+      if (typeof turn?.prompt === 'string' && turn.prompt.trim() !== '') {
+        items.push({ role: 'user', seq, text: clip(turn.prompt.trim()) })
+      }
+      if (typeof turn?.response === 'string' && turn.response.trim() !== '') {
+        items.push({ role: 'assistant', seq, text: clip(turn.response.trim()) })
+      }
+    }
+    return {
+      ...base,
+      turnCount: turns.length,
+      items,
+      truncated: turns.length > kept.length,
+    }
+  }
+
+  const total = Number(snapshot.eventCount ?? 0) || 0
+  let handle
+  try {
+    handle = await persistence.open(sessionId, 'read', { signal })
+  } catch {
+    return { ...base, turnCount: 0, items: [], truncated: false }
+  }
+  try {
+    const from = Math.max(0, total - PREVIEW_EVENTS)
+    let events = []
+    try {
+      const result = await handle.read(from, PREVIEW_EVENTS, { signal })
+      events = result?.events ?? []
+    } catch {
+      events = []
+    }
+    const items = []
+    for (const event of events) {
+      const item = previewItemOf(event)
+      if (item !== null) items.push(item)
+    }
+    const kept = items.slice(-PREVIEW_ITEMS)
+    return {
+      ...base,
+      turnCount: 0,
+      items: kept,
+      truncated: from > 0 || items.length > kept.length,
+    }
+  } finally {
+    try {
+      await handle.close()
+    } catch {}
+  }
+}
+
+/**
+ * Read one Session's turn outline.
+ *
+ * The projection cache file is the primary source: it is the same small JSON
+ * this plugin already moves into the recycle bin, it costs one read, and it does
+ * not depend on another plugin's in-memory table being warm. The Host service is
+ * only a fallback for a cache that is not on disk yet.
+ * @param ctx - Host plugin context.
+ * @param sessionId - Session to describe.
+ * @param header - Authoritative Session header, for the service fallback.
+ * @returns the turn list, or undefined when neither source has one.
+ */
+async function readTurnOutline(ctx, sessionId, header) {
+  const home = dshHome()
+  if (home !== undefined) {
+    const file = path.join(home, 'storages', 'session_projcache', 'sessions', `${sessionId}.json`)
+    try {
+      const parsed = JSON.parse(await readFile(file, 'utf8'))
+      const turns = parsed?.record?.rows?.turnOutline?.val?.turns
+      if (Array.isArray(turns) && turns.length > 0) return turns
+    } catch {}
+  }
+  return turnsFromCache(ctx, header)
+}
+
+/**
+ * Read the cached turn outline through the Host projection-cache service.
+ * @param ctx - Host plugin context.
+ * @param header - Authoritative Session header used as the cache identity witness.
+ * @returns the turn list, or undefined when no usable cached record exists.
+ */
+function turnsFromCache(ctx, header) {
+  if (header === undefined || header === null) return undefined
+  const cache = ctx.get('sessionProjectionCache')
+  if (typeof cache?.cachedSnapshot !== 'function') return undefined
+  let view
+  try {
+    view = cache.cachedSnapshot(header, ['turnOutline'])
+  } catch {
+    return undefined
+  }
+  if (view === undefined || view === null) return undefined
+  const values = view.values ?? view
+  const outline = values?.turnOutline
+  if (outline === undefined || outline === null || !Array.isArray(outline.turns)) return undefined
+  return outline.turns
+}
+
+/**
+ * Shorten one previewed message.
+ * @param text - Message text.
+ * @returns the text, clipped to PREVIEW_CHARS.
+ */
+function clip(text) {
+  return text.length > PREVIEW_CHARS ? text.slice(0, PREVIEW_CHARS) + '…' : text
+}
+
+/**
+ * Reduce one durable event to a transcript row.
+ * @param event - Stored session event.
+ * @returns the row, or null for an event the transcript does not show.
+ */
+function previewItemOf(event) {
+  const role =
+    event?.type === 'user/message' ? 'user' : event?.type === 'assistant/message' ? 'assistant' : undefined
+  if (role === undefined) return null
+  const text = messageTextOf(event?.data?.message)
+  if (text === '') return null
+  return {
+    role,
+    seq: Number(event.seq ?? 0) || 0,
+    text: text.length > PREVIEW_CHARS ? text.slice(0, PREVIEW_CHARS) + '…' : text,
+  }
+}
+
+/**
+ * Join the text blocks of one stored message; other block kinds stay out of the
+ * transcript on purpose.
+ * @param message - Stored message value.
+ * @returns the joined text.
+ */
+function messageTextOf(message) {
+  const content = message?.content
+  if (Array.isArray(content)) {
+    const parts = []
+    for (const block of content) {
+      if (block?.type === 'text' && typeof block.text === 'string' && block.text !== '') parts.push(block.text)
+    }
+    return parts.join('\n').trim()
+  }
+  if (typeof message?.text === 'string') return message.text.trim()
+  return ''
 }
 
 /**
@@ -149,22 +365,27 @@ async function handleAction(ctx, request, response) {
     }
   }
 
-  const failed = results.filter((result) => result.ok !== true)
   const skipped = results.filter((result) => result.skipped === true)
+  const failed = results.filter((result) => result.ok !== true && result.skipped !== true)
+  const succeeded = results.filter((result) => result.ok === true)
   const extra = {}
   if (op === 'pruneArchived') extra.pruned = results[0]?.removed ?? 0
   if (op === 'pruneOrphanCache') {
     extra.removed = results[0]?.removed ?? 0
     extra.freed = results[0]?.freed ?? 0
   }
-  if (op === 'emptyTrash') extra.purged = results[0]?.purged ?? 0
+  if (op === 'emptyTrash') {
+    extra.purged = results[0]?.purged ?? 0
+    extra.purgedBatches = results[0]?.purgedBatches ?? 0
+    extra.purgedSessions = results[0]?.purgedSessions ?? extra.purged
+  }
   if (op === 'purge') extra.purged = results[0]?.purged ?? 0
   if (op === 'restore') extra.restored = results[0]?.restored ?? 0
 
   sendJson(response, 200, {
     op,
     results,
-    okCount: results.length - failed.length,
+    okCount: succeeded.length,
     failedCount: failed.length,
     skippedCount: skipped.length,
     ...extra,
@@ -208,15 +429,70 @@ async function applyBatch(ctx, op, batch, sessionIds) {
   if (!BATCH_NAME.test(batch)) return { batch, ok: false, error: 'invalid-batch-name' }
   const backups = path.join(home, 'backups')
   const batchDir = path.join(backups, batch)
+  if (!isInside(backups, batchDir)) return { batch, ok: false, error: 'invalid-batch-name' }
+
+  const locateItem = (item) => {
+    const sessionId = String(item?.sessionId ?? '')
+    const cwdDir = String(item?.cwdDir ?? '')
+    if (!isSafeSegment(sessionId) || !isSafeSegment(cwdDir)) {
+      return { sessionId, error: 'invalid-batch-path' }
+    }
+    const source = path.join(batchDir, 'sessions', cwdDir, sessionId)
+    const dest = path.join(home, 'sessions', cwdDir, sessionId)
+    if (!isInside(path.join(batchDir, 'sessions'), source) || !isInside(path.join(home, 'sessions'), dest)) {
+      return { sessionId, error: 'path-escape-rejected' }
+    }
+    let cacheSource
+    let cacheDest
+    if (typeof item.cacheFile === 'string' && item.cacheFile !== '') {
+      if (!isSafeSegment(item.cacheFile)) return { sessionId, error: 'invalid-batch-path' }
+      cacheSource = path.join(batchDir, 'projcache', item.cacheFile)
+      cacheDest = path.join(home, 'storages', 'session_projcache', 'sessions', item.cacheFile)
+      if (
+        !isInside(path.join(batchDir, 'projcache'), cacheSource) ||
+        !isInside(path.join(home, 'storages', 'session_projcache', 'sessions'), cacheDest)
+      ) {
+        return { sessionId, error: 'path-escape-rejected' }
+      }
+    }
+    return { sessionId, cwdDir, source, dest, cacheSource, cacheDest }
+  }
+
+  if (!(await exists(batchDir))) return { batch, ok: false, error: 'batch-not-found' }
   let manifest
   try {
     manifest = JSON.parse(await readFile(path.join(batchDir, 'manifest.json'), 'utf8'))
   } catch {
-    return { batch, ok: false, error: 'batch-not-found' }
+    // A batch may still be restorable from session trees if the manifest write failed.
+    manifest = { createdAt: '', items: [] }
   }
-  const items = Array.isArray(manifest.items) ? manifest.items : []
+  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    manifest = { createdAt: '', items: [] }
+  }
+  const catalog = classifyManifestItems(manifest.items)
+  const recorded = catalog.usable
+  const known = new Set(recorded.map((item) => item.sessionId))
+  const discovered = await discoverBatchSessions(batchDir, known)
+  const items = [
+    ...recorded,
+    ...discovered.map((item) => ({
+      sessionId: item.sessionId,
+      cwdDir: item.cwdDir,
+      cacheFile: typeof item.cacheFile === 'string' ? item.cacheFile : '',
+      title: item.title,
+      sizeBytes: item.size,
+    })),
+  ]
   const wanted = sessionIds.length === 0 ? undefined : new Set(sessionIds)
   const selected = items.filter((item) => wanted === undefined || wanted.has(String(item.sessionId)))
+  const selectedIds = new Set(selected.map((item) => String(item.sessionId)))
+  for (const item of catalog.unsafe) {
+    const sessionId = String(item.sessionId ?? '')
+    if (sessionId === '' || selectedIds.has(sessionId)) continue
+    if (wanted !== undefined && !wanted.has(sessionId)) continue
+    selected.push(item)
+    selectedIds.add(sessionId)
+  }
   if (selected.length === 0) return { batch, ok: false, error: 'nothing-selected' }
 
   if (op === 'purge') {
@@ -231,57 +507,94 @@ async function applyBatch(ctx, op, batch, sessionIds) {
     const failures = []
     const purgedIds = new Set()
     for (const item of selected) {
+      const located = locateItem(item)
+      if (located.error) {
+        failures.push({ sessionId: located.sessionId, error: located.error })
+        continue
+      }
       try {
-        await rm(path.join(batchDir, 'sessions', String(item.cwdDir ?? ''), String(item.sessionId)), {
-          recursive: true,
-          force: true,
-        })
-        if (typeof item.cacheFile === 'string' && item.cacheFile !== '') {
-          await rm(path.join(batchDir, 'projcache', item.cacheFile), { force: true })
+        await rm(located.source, { recursive: true, force: true })
+        if (located.cacheSource) {
+          await rm(located.cacheSource, { force: true })
         }
-        purgedIds.add(String(item.sessionId))
+        purgedIds.add(located.sessionId)
       } catch (error) {
-        failures.push({ sessionId: String(item.sessionId), error: messageOf(error) })
+        failures.push({ sessionId: located.sessionId, error: messageOf(error) })
       }
     }
     const kept = items.filter((item) => !purgedIds.has(String(item.sessionId)))
-    await shrinkBatch(batchDir, manifest, items, kept)
+    try {
+      await shrinkBatch(batchDir, manifest, items, kept)
+    } catch (error) {
+      failures.push({ error: 'manifest-update-failed', message: messageOf(error) })
+    }
     return { batch, ok: failures.length === 0, purged: purgedIds.size, failures }
   }
 
   const restored = []
   const failures = []
   for (const item of selected) {
-    const cwdDir = String(item.cwdDir ?? '')
-    if (cwdDir === '') {
-      failures.push({ sessionId: String(item.sessionId), error: 'batch-entry-has-no-directory' })
+    const located = locateItem(item)
+    if (located.error) {
+      failures.push({ sessionId: located.sessionId, error: located.error })
       continue
     }
-    const target = path.join(home, 'sessions', cwdDir, String(item.sessionId))
     try {
-      if (await exists(target)) {
-        failures.push({ sessionId: String(item.sessionId), error: 'already-exists' })
+      const destExists = await exists(located.dest)
+      const sourceExists = await exists(located.source)
+      if (destExists && sourceExists) {
+        failures.push({ sessionId: located.sessionId, error: 'already-exists' })
         continue
       }
-      await mkdir(path.dirname(target), { recursive: true })
-      await moveWithRetry(path.join(batchDir, 'sessions', cwdDir, String(item.sessionId)), target)
-      if (typeof item.cacheFile === 'string' && item.cacheFile !== '') {
-        const cacheSource = path.join(batchDir, 'projcache', item.cacheFile)
-        const cacheTarget = path.join(home, 'storages', 'session_projcache', 'sessions', item.cacheFile)
-        if (await exists(cacheSource)) {
-          await mkdir(path.dirname(cacheTarget), { recursive: true })
-          await moveWithRetry(cacheSource, cacheTarget)
+      if (destExists && !sourceExists) {
+        // Log already landed; finish a leftover cache if the previous attempt stopped mid-item.
+        if (located.cacheSource && (await exists(located.cacheSource))) {
+          if (await exists(located.cacheDest)) {
+            failures.push({ sessionId: located.sessionId, error: 'already-exists' })
+            continue
+          }
+          await mkdir(path.dirname(located.cacheDest), { recursive: true })
+          await moveWithRetry(located.cacheSource, located.cacheDest)
         }
+        restored.push(located.sessionId)
+        continue
       }
-      restored.push(String(item.sessionId))
+      await mkdir(path.dirname(located.dest), { recursive: true })
+      await moveWithRetry(located.source, located.dest)
+      try {
+        if (located.cacheSource && (await exists(located.cacheSource))) {
+          await mkdir(path.dirname(located.cacheDest), { recursive: true })
+          await moveWithRetry(located.cacheSource, located.cacheDest)
+        }
+      } catch (cacheError) {
+        try {
+          if (!(await exists(located.source))) {
+            await mkdir(path.dirname(located.source), { recursive: true })
+            await moveWithRetry(located.dest, located.source)
+          }
+        } catch (rollbackError) {
+          failures.push({
+            sessionId: located.sessionId,
+            error: messageOf(cacheError),
+            rollback: messageOf(rollbackError),
+          })
+          continue
+        }
+        throw cacheError
+      }
+      restored.push(located.sessionId)
     } catch (error) {
-      failures.push({ sessionId: String(item.sessionId), error: messageOf(error) })
+      failures.push({ sessionId: located.sessionId, error: messageOf(error) })
     }
   }
 
   const done = new Set(restored)
   const remaining = items.filter((item) => !done.has(String(item.sessionId)))
-  await shrinkBatch(batchDir, manifest, items, remaining)
+  try {
+    await shrinkBatch(batchDir, manifest, items, remaining)
+  } catch (error) {
+    failures.push({ error: 'manifest-update-failed', message: messageOf(error) })
+  }
   // The Session list is served from a projection cache; drop the stale rows so
   // restored sessions show up on the very next read instead of after a restart.
   await refreshSessionCaches(ctx)
@@ -298,16 +611,12 @@ async function applyBatch(ctx, op, batch, sessionIds) {
  */
 async function shrinkBatch(batchDir, manifest, before, remaining) {
   if (remaining.length === before.length) return
-  if (remaining.length === 0) {
-    try {
-      await rm(batchDir, { recursive: true, force: true })
-    } catch {}
+  if (remaining.length === 0 && !(await batchHasLeftoverBytes(batchDir))) {
+    await rm(batchDir, { recursive: true, force: true })
     return
   }
-  try {
-    manifest.items = remaining
-    await writeFile(path.join(batchDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8')
-  } catch {}
+  manifest.items = remaining
+  await writeFile(path.join(batchDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8')
 }
 
 /**
@@ -353,14 +662,17 @@ async function pruneOrphanCache(ctx) {
   const scan = await scanOrphanCache(home, new Set(snapshots.keys()))
   let removed = 0
   let freed = 0
+  const failures = []
   for (const item of scan.files) {
     try {
       await rm(item.path, { force: true })
       removed += 1
       freed += item.bytes
-    } catch {}
+    } catch (error) {
+      failures.push({ file: item.file, error: messageOf(error) })
+    }
   }
-  return { ok: true, removed, freed }
+  return { ok: failures.length === 0, removed, freed, failures }
 }
 
 /**
@@ -377,15 +689,30 @@ async function emptyTrash() {
   } catch {
     return { ok: true, purged: 0 }
   }
-  let purged = 0
+  let purgedBatches = 0
+  let purgedSessions = 0
+  const failures = []
   for (const entry of entries) {
     if (!entry.isDirectory() || !entry.name.startsWith(TRASH_PREFIX) || !BATCH_NAME.test(entry.name)) continue
+    const batchDir = path.join(backups, entry.name)
+    if (!isInside(backups, batchDir)) continue
+    let count = 0
     try {
-      await rm(path.join(backups, entry.name), { recursive: true, force: true })
-      purged += 1
-    } catch {}
+      const manifest = JSON.parse(await readFile(path.join(batchDir, 'manifest.json'), 'utf8'))
+      count = Array.isArray(manifest.items) ? manifest.items.length : 0
+    } catch {
+      const discovered = await discoverBatchSessions(batchDir, new Set())
+      count = discovered.length
+    }
+    try {
+      await rm(batchDir, { recursive: true, force: true })
+      purgedBatches += 1
+      purgedSessions += count
+    } catch (error) {
+      failures.push({ batch: entry.name, error: messageOf(error) })
+    }
   }
-  return { ok: true, purged }
+  return { ok: failures.length === 0, purged: purgedSessions, purgedBatches, purgedSessions, failures }
 }
 
 /**
@@ -416,6 +743,9 @@ async function refreshSessionCaches(ctx) {
  * @returns the outcome naming the batch and the moved paths.
  */
 async function moveToTrash(ctx, sessionId, sharedBatch, label) {
+  if (!isSafeSegment(sessionId)) {
+    return { sessionId, ok: false, error: 'invalid-session-id' }
+  }
   if (isAttached(ctx, sessionId)) {
     return {
       sessionId,
@@ -481,12 +811,12 @@ async function moveToTrash(ctx, sessionId, sharedBatch, label) {
         else await moveWithRetry(cacheTarget, cacheSource)
       } catch {}
     }
-    try {
-      await rm(batchDir, { recursive: true, force: true })
-    } catch {}
+    // Never delete a shared batch that already records or still holds other sessions.
+    await removeBatchIfAbandoned(batchDir)
   }
   try {
     await mkdir(path.dirname(target), { recursive: true })
+    testInject('move', sessionId)
     await moveWithRetry(sessionDirectory, target)
     moved.push(target)
 
@@ -512,7 +842,14 @@ async function moveToTrash(ctx, sessionId, sharedBatch, label) {
   }
   if (!Array.isArray(manifest.items)) manifest.items = []
   manifest.items.push(item)
-  await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8')
+  try {
+    testInject('manifest', sessionId)
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8')
+  } catch (error) {
+    manifest.items.pop()
+    await rollback()
+    return { sessionId, ok: false, error: 'manifest-write-failed', reason: messageOf(error) }
+  }
 
   const registry = ctx.get('workspaceRegistry')
   const detached = []
@@ -529,6 +866,14 @@ async function moveToTrash(ctx, sessionId, sharedBatch, label) {
   } catch {}
   try {
     await registry?.unpinSession?.(sessionId)
+  } catch {}
+
+  // Every open client keeps its own row cache. The Host list itself is read
+  // fresh from persistence, but a client only drops a row when the Host says the
+  // Session left — so say it, or the sidebar keeps showing a Session whose log
+  // directory has already moved.
+  try {
+    ctx.emit?.('api-session/removed', sessionId)
   } catch {}
 
   return { sessionId, ok: true, batch: batchName, moved, detached }
@@ -668,17 +1013,29 @@ async function readTrash() {
     if (!entry.isDirectory() || !entry.name.startsWith(TRASH_PREFIX) || !BATCH_NAME.test(entry.name)) continue
     const batchDir = path.join(backups, entry.name)
     try {
-      const manifest = JSON.parse(await readFile(path.join(batchDir, 'manifest.json'), 'utf8'))
-      const items = Array.isArray(manifest.items) ? manifest.items : []
-      const rows = items.map((item) => ({
-        sessionId: String(item.sessionId),
-        cwdDir: String(item.cwdDir ?? ''),
-        title: typeof item.title === 'string' ? item.title : '',
-        size: Number(item.sizeBytes ?? 0) || 0,
-      }))
+      let createdAt = ''
+      let manifestItems = []
+      try {
+        const manifest = JSON.parse(await readFile(path.join(batchDir, 'manifest.json'), 'utf8'))
+        if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+          throw new Error('manifest-not-object')
+        }
+        createdAt = typeof manifest.createdAt === 'string' ? manifest.createdAt : ''
+        manifestItems = usableBatchItems(manifest.items).map((item) => ({
+          sessionId: item.sessionId,
+          cwdDir: item.cwdDir,
+          title: item.title,
+          size: item.sizeBytes,
+        }))
+      } catch {
+        // Manifest missing or unreadable: fall back to scanning session trees.
+      }
+      const known = new Set(manifestItems.map((item) => item.sessionId))
+      const rows = [...manifestItems, ...(await discoverBatchSessions(batchDir, known))]
+      if (rows.length === 0) continue
       batches.push({
         batch: entry.name,
-        createdAt: typeof manifest.createdAt === 'string' ? manifest.createdAt : '',
+        createdAt,
         count: rows.length,
         bytes: await directoryBytes(batchDir),
         items: rows,
@@ -759,6 +1116,199 @@ async function scanOrphanCache(home, known) {
     bytes += info.size
   }
   return { available: true, count: files.length, bytes, files }
+}
+
+
+/**
+ * Whether a path segment is a single, non-traversing name.
+ * @param name - Candidate segment.
+ * @returns true when the name is safe to join under a known root.
+ */
+function isSafeSegment(name) {
+  if (typeof name !== 'string' || name === '') return false
+  if (name === '.' || name === '..') return false
+  if (/[\\/\0]/.test(name)) return false
+  if (path.isAbsolute(name) || path.win32.isAbsolute(name) || path.posix.isAbsolute(name)) return false
+  return true
+}
+
+/**
+ * Whether `target` resolves strictly inside `root`.
+ * @param root - Absolute root directory.
+ * @param target - Absolute candidate path.
+ * @returns true when target is a descendant of root.
+ */
+function isInside(root, target) {
+  if (typeof root !== 'string' || typeof target !== 'string' || root === '' || target === '') return false
+  const rootResolved = path.resolve(root)
+  const targetResolved = path.resolve(target)
+  const relative = path.relative(rootResolved, targetResolved)
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
+}
+
+/**
+ * Test-only fault injection; inert unless DSHSC_TEST_HOOKS=1.
+ * @param kind - move | manifest
+ * @param sessionId - Target Session.
+ */
+function testInject(kind, sessionId) {
+  if (process.env.DSHSC_TEST_HOOKS !== '1') return
+  if (kind === 'move' && process.env.DSHSC_FAIL_MOVE === sessionId) throw new Error('injected-move-failure')
+  if (kind === 'manifest' && process.env.DSHSC_FAIL_MANIFEST === sessionId) {
+    throw new Error('injected-manifest-failure')
+  }
+}
+
+/**
+ * Remove a trash batch directory only when it holds no recorded or leftover sessions.
+ * @param batchDir - Absolute batch directory.
+ */
+async function removeBatchIfAbandoned(batchDir) {
+  try {
+    const manifest = JSON.parse(await readFile(path.join(batchDir, 'manifest.json'), 'utf8'))
+    if (Array.isArray(manifest.items) && manifest.items.length > 0) return
+  } catch {
+    // Missing or unreadable manifest: only drop the folder when no session trees remain.
+  }
+  if (await batchHasLeftoverBytes(batchDir)) return
+  try {
+    await rm(batchDir, { recursive: true, force: true })
+  } catch {}
+}
+
+
+/**
+ * Split manifest entries into path-safe catalog items and illegal records.
+ * Illegal records are retained only so a requested restore/purge can still
+ * report a path error; they never enter `known` and cannot hide a real tree.
+ * @param items - Raw manifest items.
+ * @returns `{ usable, unsafe }` catalog partitions.
+ */
+function classifyManifestItems(items) {
+  const usable = []
+  const unsafe = []
+  if (!Array.isArray(items)) return { usable, unsafe }
+  for (const item of items) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+    const sessionId = String(item.sessionId ?? '')
+    const cwdDir = String(item.cwdDir ?? '')
+    if (!isSafeSegment(sessionId) || !isSafeSegment(cwdDir)) {
+      unsafe.push(item)
+      continue
+    }
+    const cacheFile = typeof item.cacheFile === 'string' ? item.cacheFile : ''
+    if (cacheFile !== '' && !isSafeSegment(cacheFile)) {
+      unsafe.push(item)
+      continue
+    }
+    usable.push({
+      sessionId,
+      cwdDir,
+      cacheFile,
+      title: typeof item.title === 'string' ? item.title : '',
+      sizeBytes: Number(item.sizeBytes ?? 0) || 0,
+    })
+  }
+  return { usable, unsafe }
+}
+
+/**
+ * Keep only manifest entries whose session and cwd segments are safe to join.
+ * @param items - Raw manifest items.
+ * @returns usable catalog entries.
+ */
+function usableBatchItems(items) {
+  return classifyManifestItems(items).usable
+}
+
+/**
+ * Whether a batch still holds session trees or leftover projection-cache files.
+ * @param batchDir - Absolute batch directory.
+ * @returns true when deleting the folder would destroy unrestored bytes.
+ */
+async function batchHasLeftoverBytes(batchDir) {
+  if (await hasSessionTrees(path.join(batchDir, 'sessions'))) return true
+  const cacheRoot = path.join(batchDir, 'projcache')
+  let entries
+  try {
+    entries = await readdir(cacheRoot, { withFileTypes: true })
+  } catch {
+    return false
+  }
+  return entries.some((entry) => entry.isFile() && isSafeSegment(entry.name))
+}
+
+/**
+ * Whether a batch still has session directories on disk.
+ * @param sessionsRoot - Absolute `sessions` directory inside a batch.
+ * @returns true when at least one session directory exists.
+ */
+async function hasSessionTrees(sessionsRoot) {
+  let groups
+  try {
+    groups = await readdir(sessionsRoot, { withFileTypes: true })
+  } catch {
+    return false
+  }
+  for (const group of groups) {
+    if (!group.isDirectory() || !isSafeSegment(group.name)) continue
+    let inner
+    try {
+      inner = await readdir(path.join(sessionsRoot, group.name), { withFileTypes: true })
+    } catch {
+      continue
+    }
+    if (inner.some((entry) => entry.isDirectory() && isSafeSegment(entry.name))) return true
+  }
+  return false
+}
+
+/**
+ * Scan a batch folder for session directories not listed in the manifest.
+ * @param batchDir - Absolute batch directory.
+ * @param knownIds - Session ids already taken from the manifest.
+ * @returns discovered items that can still be restored.
+ */
+async function discoverBatchSessions(batchDir, knownIds) {
+  const found = []
+  const sessionsRoot = path.join(batchDir, 'sessions')
+  let groups
+  try {
+    groups = await readdir(sessionsRoot, { withFileTypes: true })
+  } catch {
+    return found
+  }
+  for (const group of groups) {
+    if (!group.isDirectory() || !isSafeSegment(group.name)) continue
+    let inner
+    try {
+      inner = await readdir(path.join(sessionsRoot, group.name), { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of inner) {
+      if (!entry.isDirectory() || !isSafeSegment(entry.name) || knownIds.has(entry.name)) continue
+      const folder = path.join(sessionsRoot, group.name, entry.name)
+      const cacheFile = `${entry.name}.json`
+      const cacheSource = path.join(batchDir, 'projcache', cacheFile)
+      const item = {
+        sessionId: entry.name,
+        cwdDir: group.name,
+        title: '',
+        size: await directoryBytes(folder),
+        recovered: true,
+      }
+      if (
+        isSafeSegment(cacheFile) &&
+        isInside(path.join(batchDir, 'projcache'), cacheSource) &&
+        (await exists(cacheSource))
+      ) {
+        item.cacheFile = cacheFile
+      }
+      found.push(item)
+    }
+  }
+  return found
 }
 
 /**
