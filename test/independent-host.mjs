@@ -14,7 +14,7 @@ let serial=0;
 async function fixture(){
  const home=path.join(root,'case-'+(++serial)); await fs.mkdir(home,{recursive:true}); process.env.DSH_HOME=home;
  const snapshots=[], routes=new Map(), emitted=[], archive=[];
- const services={workspaceRegistry:{list:()=>[],archivedSessionIds:[],pinnedSessionIds:[],archiveSession:async(id)=>archive.push(id),unarchiveSession:async()=>{}},sessionPersistence:{list:async()=>snapshots,stat:async id=>snapshots.find(s=>s.header.id===id)},sessions:{get:id=>id==='live'?{}:undefined},agents:{get:()=>undefined}};
+ const services={workspaceRegistry:{list:()=>[],archivedSessionIds:[],pinnedSessionIds:[],archiveSession:async(id)=>archive.push(id),unarchiveSession:async()=>{}},sessionPersistence:{list:async()=>snapshots,stat:async id=>snapshots.find(s=>s.header.id===id)},sessions:{get:id=>id==='idle'?{}:undefined},agents:{get:id=>id==='live'?{status:'running'}:undefined}};
  const ctx={get:k=>services[k],effect:fn=>fn(),emit:(...args)=>{emitted.push(args);ctx.onEmit?.(...args)},webServer:{register:route=>{routes.set(route.path,route.handler);return ()=>{}}}}; apply(ctx);
  async function call(body,headers={},method='POST'){
  const req=(async function*(){yield Buffer.from(JSON.stringify(body));})(); req.method=method;req.headers={host:'localhost:321',...headers};
@@ -72,11 +72,15 @@ for(const text of [undefined,'{broken','null','{"items":[null]}']){
 }
 // Protocol guards and mixed outcomes, archive round trip.
 {
- const f=await fixture();await f.add('good');await f.add('live');
+ const f=await fixture();await f.add('good');await f.add('live');await f.add('idle');
  const a=await f.call({op:'archive',sessionIds:['good']});check('archive reaches mock registry',a.data.okCount===1&&f.archive.includes('good'),a);
  const u=await f.call({op:'unarchive',sessionIds:['good']});check('unarchive round trip',u.data.okCount===1,u);
  const r=await f.call({op:'delete',sessionIds:['good','live','missing']});check('mixed outcomes distinct',r.data.results[0].ok===true&&r.data.results[1].skipped===true&&r.data.results[2].error==='session-log-not-found',r);
+ check('refused row names the running cause',r.data.results[1].error==='session-running',r.data.results[1]);
  check('summary failure count excludes skips',r.data.okCount===1&&r.data.failedCount===1&&r.data.skippedCount===1,{ok:r.data.okCount,failed:r.data.failedCount,skipped:r.data.skippedCount});
+ const idle=await f.call({op:'delete',sessionIds:['idle']});
+ check('attached-but-idle session is deletable',idle.data.results[0].ok===true,idle.data.results[0]);
+ check('attached-but-idle session left the sessions root',!(await exists(path.join(f.home,'sessions/group/idle/log'))),idle);
  check('wrong method blocked',(await f.call({op:'delete',sessionIds:['live']},{},'GET')).status===405);
  check('cross origin blocked',(await f.call({op:'delete',sessionIds:['live']},{origin:'https://evil.example'})).status===403);
 }

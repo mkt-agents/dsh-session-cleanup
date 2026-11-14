@@ -48,14 +48,14 @@ window.__ModuleLoader__.load({
       'panel.badge.blank': 'empty',
       'panel.badge.pinned': 'pinned',
       'panel.badge.subagent': 'subagent',
-      'panel.hint.live': 'Open or running sessions cannot be deleted. Switch away from them first.',
+      'panel.hint.running': 'A session with an active turn cannot be deleted. Stop it first.',
       'panel.bulk.selected': '{count} selected',
       'panel.bulk.size': '{size} total',
       'panel.bulk.archive': 'Archive selected',
       'panel.bulk.unarchive': 'Restore selected',
       'panel.bulk.delete': 'Delete selected',
       'panel.bulk.confirm': 'Move {count} session(s) to the recycle bin?',
-      'panel.bulk.skipLive': '{count} open session(s) were skipped.',
+      'panel.bulk.skipRunning': '{count} running session(s) were skipped.',
       'panel.bulk.running': 'Working…',
       'panel.notice.ok': 'Done: {ok} changed, {failed} failed.',
       'panel.notice.deleted': 'Moved {count} session(s) to the recycle bin. You can undo below.',
@@ -103,7 +103,7 @@ window.__ModuleLoader__.load({
       'panel.emptyHint': 'Pick another view on the left, or clear the search above.',
       'menu.delete': 'Delete session',
       'menu.deleted': 'Moved to the recycle bin.',
-      'menu.inUse': 'This session is open or running. Switch to another session and retry.',
+      'menu.inUse': 'This session has an active turn. Stop it and retry.',
       'menu.missing': 'This session has no stored log any more.',
       'menu.failed': 'Delete failed: {message}',
       'panel.preview.back': 'Back',
@@ -157,14 +157,14 @@ window.__ModuleLoader__.load({
       'panel.badge.blank': '空白',
       'panel.badge.pinned': '已置顶',
       'panel.badge.subagent': '子会话',
-      'panel.hint.live': '已打开或运行中的会话不能删除，请先切换到其他会话。',
+      'panel.hint.running': '正在运行（有进行中的回合）的会话不能删除，请先停止它。',
       'panel.bulk.selected': '已选 {count} 项',
       'panel.bulk.size': '共 {size}',
       'panel.bulk.archive': '归档所选',
       'panel.bulk.unarchive': '恢复所选',
       'panel.bulk.delete': '删除所选',
       'panel.bulk.confirm': '确定把 {count} 个会话移入回收站？',
-      'panel.bulk.skipLive': '已跳过 {count} 个已打开会话。',
+      'panel.bulk.skipRunning': '已跳过 {count} 个运行中的会话。',
       'panel.bulk.running': '处理中…',
       'panel.notice.ok': '完成：成功 {ok} 个，失败 {failed} 个。',
       'panel.notice.deleted': '已把 {count} 个会话移入回收站，可在下方还原。',
@@ -212,7 +212,7 @@ window.__ModuleLoader__.load({
       'panel.emptyHint': '试试在左侧切换视图，或清理搜索条件。',
       'menu.delete': '删除会话',
       'menu.deleted': '已移入回收站。',
-      'menu.inUse': '这个会话正在使用中（已打开或运行），请先切换到其他会话再删除。',
+      'menu.inUse': '这个会话正在运行中（有进行中的回合），请先停止它再删除。',
       'menu.missing': '这个会话的日志已经不存在了。',
       'menu.failed': '删除失败：{message}',
       'panel.preview.back': '返回',
@@ -427,7 +427,7 @@ window.__ModuleLoader__.load({
         if (outcome.ok !== true) {
           const code = String(outcome.error ?? '')
           const text =
-            code === 'session-in-use'
+            code === 'session-running'
               ? t('menu.inUse')
               : code === 'session-log-not-found'
                 ? t('menu.missing')
@@ -677,7 +677,8 @@ window.__ModuleLoader__.load({
      */
     function RowActions({ row, archived, pending, confirming, onArchive, onUnarchive, onDelete, onConfirm, onCancel, t }) {
       const busy = pending
-      const canDelete = !row.live
+      // An attached-but-idle Session is deletable; only a live turn holds the log.
+      const canDelete = row.running !== true
       return h(
         'div',
         { className: 'dshsc-actions' },
@@ -717,7 +718,7 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dshsc-btn dshsc-btnSm dshsc-btnGhost dshsc-btnDanger',
                 disabled: busy || !canDelete,
-                title: canDelete ? undefined : t('panel.hint.live'),
+                title: canDelete ? undefined : t('panel.hint.running'),
                 onClick: () => onDelete(row.id),
               },
               t('panel.action.delete'),
@@ -957,8 +958,8 @@ window.__ModuleLoader__.load({
                 {
                   type: 'button',
                   className: 'dshsc-btn dshsc-btnSm dshsc-btnDanger',
-                  disabled: row !== undefined && row.live === true,
-                  title: row !== undefined && row.live === true ? t('panel.hint.live') : undefined,
+                  disabled: row !== undefined && row.running === true,
+                  title: row !== undefined && row.running === true ? t('panel.hint.running') : undefined,
                   onClick: () => onDelete(state.id),
                 },
                 t('panel.action.delete'),
@@ -1191,8 +1192,8 @@ window.__ModuleLoader__.load({
         return ids
       }, [selection, sessionById])
       const selectedBytes = selectedIds.reduce((sum, id) => sum + (sessionById.get(id)?.sizeBytes ?? 0), 0)
-      const selectedLive = selectedIds.filter((id) => sessionById.get(id)?.live === true)
-      const deletableIds = selectedIds.filter((id) => sessionById.get(id)?.live !== true)
+      const selectedRunning = selectedIds.filter((id) => sessionById.get(id)?.running === true)
+      const deletableIds = selectedIds.filter((id) => sessionById.get(id)?.running !== true)
       const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selection.has(id))
       const someVisibleSelected = visibleIds.some((id) => selection.has(id))
 
@@ -1601,7 +1602,7 @@ window.__ModuleLoader__.load({
 
       const bulkDelete = React.useCallback(() => {
         if (deletableIds.length === 0) {
-          setNotice({ kind: 'error', text: t('panel.hint.live') })
+          setNotice({ kind: 'error', text: t('panel.hint.running') })
           return
         }
         if (!confirmBulk) {
@@ -2117,8 +2118,8 @@ window.__ModuleLoader__.load({
               formatBytes(selectedBytes) === ''
                 ? null
                 : h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.size', { size: formatBytes(selectedBytes) })),
-              selectedLive.length > 0
-                ? h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.skipLive', { count: selectedLive.length }))
+              selectedRunning.length > 0
+                ? h('span', { className: 'dshsc-dockHint' }, t('panel.bulk.skipRunning', { count: selectedRunning.length }))
                 : null,
               selectedIds.some((id) => !visibleIds.includes(id))
                 ? h(
@@ -2159,7 +2160,7 @@ window.__ModuleLoader__.load({
                   type: 'button',
                   className: 'dshsc-btn dshsc-btnSolidDanger',
                   disabled: pending.length > 0 || deletableIds.length === 0,
-                  title: deletableIds.length === 0 ? t('panel.hint.live') : undefined,
+                  title: deletableIds.length === 0 ? t('panel.hint.running') : undefined,
                   onClick: bulkDelete,
                 },
                 confirmBulk

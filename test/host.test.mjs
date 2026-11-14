@@ -97,6 +97,28 @@ const previewEvents = [
 
 const emitted = []
 
+// Mutable so later fixtures can register a row without rewriting the mock.
+const controllerItems = [
+  {
+    sessionId: liveId,
+    updatedAt: Date.now(),
+    blank: false,
+    running: true,
+    agentAvailable: true,
+    cwd: 'D:/demo/project',
+    projections: { values: { title: 'Live session' } },
+  },
+  {
+    sessionId: coldId,
+    updatedAt: Date.now() - 86_400_000,
+    blank: false,
+    running: false,
+    agentAvailable: false,
+    cwd: 'D:/demo/project',
+    projections: { values: { title: 'Cold session' } },
+  },
+]
+
 const services = {
   webServer: { register: () => () => {} },
   workspaceRegistry: registry,
@@ -119,28 +141,7 @@ const services = {
     },
   },
   sessionController: {
-    list: async () => ({
-      items: [
-        {
-          sessionId: liveId,
-          updatedAt: Date.now(),
-          blank: false,
-          running: true,
-          agentAvailable: true,
-          cwd: 'D:/demo/project',
-          projections: { values: { title: 'Live session' } },
-        },
-        {
-          sessionId: coldId,
-          updatedAt: Date.now() - 86_400_000,
-          blank: false,
-          running: false,
-          agentAvailable: false,
-          cwd: 'D:/demo/project',
-          projections: { values: { title: 'Cold session' } },
-        },
-      ],
-    }),
+    list: async () => ({ items: controllerItems.map((item) => ({ ...item })) }),
   },
 }
 
@@ -249,7 +250,9 @@ check('old orphan deleted', goneOld === false)
 check('fresh orphan kept', goneFresh === true)
 
 const liveDelete = await callAction({ op: 'delete', sessionIds: [liveId] })
-check('live session skipped', liveDelete.data.results[0].skipped === true, liveDelete.data.results[0])
+check('running session skipped', liveDelete.data.results[0].skipped === true, liveDelete.data.results[0])
+check('running session names its own error', liveDelete.data.results[0].error === 'session-running', liveDelete.data.results[0])
+check('running session stays on disk', await sessionDirExists(liveId) === true)
 
 const coldDelete = await callAction({ op: 'delete', sessionIds: [coldId], labels: { [coldId]: 'Cold session' } })
 const batch = coldDelete.data.results[0].batch
@@ -486,15 +489,50 @@ const r5Live = 'session-r5-live'
 const r5Good = 'session-r5-good'
 await addCold(r5Good, 8)
 await addCold(r5Live, 8)
+// r5Live is attached to a live Agent but has no turn in flight: deletable now.
 const previousGet = services.sessions.get
 services.sessions.get = (id) => (id === liveId || id === r5Live ? { id } : undefined)
 const r5Mixed = await callAction({ op: 'delete', sessionIds: [r5Good, r5Live, 'session-r5-missing'] })
 services.sessions.get = previousGet
 check(
+  'R5 attached-but-idle session is deletable',
+  r5Mixed.data.results[1]?.ok === true,
+  r5Mixed.data.results[1],
+)
+check('R5 attached-but-idle session left the sessions root', await sessionDirExists(r5Live) === false)
+check(
   'R5 failedCount excludes skipped',
-  r5Mixed.data.okCount === 1 && r5Mixed.data.failedCount === 1 && r5Mixed.data.skippedCount === 1,
+  r5Mixed.data.okCount === 2 && r5Mixed.data.failedCount === 1 && r5Mixed.data.skippedCount === 0,
   { ok: r5Mixed.data.okCount, failed: r5Mixed.data.failedCount, skipped: r5Mixed.data.skippedCount, results: r5Mixed.data.results },
 )
+
+// A Session with a turn in flight is the only thing the guard refuses.
+const r6Running = 'session-r6-running'
+await addCold(r6Running, 8)
+controllerItems.push({
+  sessionId: r6Running,
+  updatedAt: Date.now(),
+  blank: false,
+  running: true,
+  agentAvailable: true,
+  cwd: 'D:/demo/project',
+  projections: { values: { title: 'Running session' } },
+})
+const r6Delete = await callAction({ op: 'delete', sessionIds: [r6Running] })
+controllerItems.pop()
+check('R6 running session is refused', r6Delete.data.results[0]?.skipped === true, r6Delete.data.results[0])
+check('R6 refusal names session-running', r6Delete.data.results[0]?.error === 'session-running', r6Delete.data.results[0])
+check('R6 running session stays on disk', await sessionDirExists(r6Running) === true)
+
+// An Agent reporting `running` through the registry is refused even when the
+// controller summary has not caught up yet.
+const r7Running = 'session-r7-running'
+await addCold(r7Running, 8)
+services.agents.get = (id) => (id === r7Running ? { status: 'running' } : undefined)
+const r7Delete = await callAction({ op: 'delete', sessionIds: [r7Running] })
+services.agents.get = () => undefined
+check('R7 agent-status running is refused', r7Delete.data.results[0]?.error === 'session-running', r7Delete.data.results[0])
+check('R7 agent-status running stays on disk', await sessionDirExists(r7Running) === true)
 
 const summary = results.map((row) => `${row.ok ? 'PASS' : 'FAIL'}  ${row.name}${row.ok ? '' : '  -> ' + JSON.stringify(row.detail)}`)
 console.log(summary.join('\n'))

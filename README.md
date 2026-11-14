@@ -7,7 +7,7 @@
 [![DSH Web Plugin](https://img.shields.io/badge/DSH-Web%20Plugin-0f766e.svg)](https://github.com/mkt-agents/dsh-session-cleanup)
 [![Node.js 22 or later](https://img.shields.io/badge/Node.js-22%20or%20later-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-224%20official%20+%2064%20independent-238636.svg)](#测试)
+[![Tests](https://img.shields.io/badge/tests-236%20official%20+%2067%20independent-238636.svg)](#测试)
 [![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-listed-zh.svg)](https://dsh.market/?plugin=mkt-agents%2Fdsh-session-cleanup)
 
 [功能](#功能) · [为什么需要](#为什么需要) · [安全模型](#安全模型) · [安装](#安装) · [配置](#配置) · [使用](#使用) · [Host 路由](#host-路由) · [目录结构](#目录结构) · [测试](#测试) · [FAQ](#faq) · [English](#english)
@@ -18,7 +18,8 @@
 
 ## 功能
 
-- **按体积排序的会话列表** —— 左栏按工作区导航，右栏列出该工作区会话，显示字节体积、最后更新时间、运行中/活跃徽章，一眼找出最占空间的会话。
+- **按体积排序的会话列表** —— 左栏按工作区导航，右栏列出该工作区会话，显示字节体积、最后更新时间、已打开/运行中徽章，一眼找出最占空间的会话。
+- **已打开的空闲会话也能删** —— 只有正在跑回合（`running`）的会话会被拦下并给出明确原因；已打开但空闲的会话（`已打开`、`running: false`）删除按钮可用，目录整体移入回收站，客户端同步丢弃该行。
 - **归档 / 取消归档** —— 走 `workspaceRegistry.archiveSession`，归档会话从活动列表移出但**一个字节都不动**。
 - **会话记录预览** —— 点会话标题在右栏打开只读记录：最近 12 条用户/助手文本 + 记录数、体积、更新时间，确认内容之后再归档或删除。
 - **可撤销删除** —— 删除会把会话目录**和**它的投影缓存文件一起 **移动** 到 `$DSH_HOME/backups/session-cleanup-<stamp>/`，并写一份 manifest。没有东西被销毁。
@@ -40,7 +41,8 @@ DSH 没有"删除会话"这个能力。移除一个 Workspace 注册项是**故�
 
 | 约束 | 行为 |
 |---|---|
-| 会话仍被 live Agent 持有 | **跳过**，不移动 —— 它持有日志写入句柄 |
+| 会话正在跑回合（`running`） | **跳过**，不移动 —— 这一轮还在往日志里追加事件 |
+| 会话已打开但空闲（`已打开`） | 正常删除 —— 目录整体移入回收站，并通知客户端丢弃该行 |
 | 移动范围 | 只动 `$DSH_HOME/sessions` 下的内容 |
 | 删除范围 | 只动 `$DSH_HOME/backups` 下的内容 |
 | 部分失败 | 回滚已移动的条目，并丢弃半成品批次 |
@@ -123,15 +125,15 @@ dsh plugin --profile web add ./dsh-session-cleanup
 ## 目录结构
 
 ```
-index.js             Host 半边：路由、回收站批次、孤立缓存扫描（1489 行）
-client.js            Client 半边：main 面板 + sidebar 入口（2445 行）
+index.js             Host 半边：路由、回收站批次、孤立缓存扫描（1516 行）
+client.js            Client 半边：main 面板 + sidebar 入口（2593 行）
 cordis.patch.yml     bundle patch
 locale/{en,zh}.json  插件元数据字符串
 icon.svg             侧边栏图标
-test/host.test.mjs            Host 路由测试（83 条断言，含 R1–R5 回归）
-test/client.test.mjs          Client 渲染测试（141 条断言，含 R4 与回收站勾选及作用域防护）
-test/independent-host.mjs     独立 Host 复现集（50 条断言，原样保留）
-test/independent-client.mjs   独立 Client 复现集（15 条断言，原样保留）
+test/host.test.mjs            Host 路由测试（92 条断言，含 R1–R7 回归）
+test/client.test.mjs          Client 渲染测试（144 条断言，含 R4 与回收站勾选及作用域防护）
+test/independent-host.mjs     独立 Host 复现集（53 条断言，原样保留）
+test/independent-client.mjs   独立 Client 复现集（14 条断言，原样保留）
 ```
 
 ## 测试
@@ -141,12 +143,12 @@ npm test
 npm run test:independent
 ```
 
-官方套件与独立复现集都跑在纯 Node 上，零依赖：Host 套件用临时 `DSH_HOME` 驱动真实路由处理函数，Client 套件用极简 hook 运行时执行组件树。故障注入钩子仅在 `DSHSC_TEST_HOOKS=1` 时生效。独立 65 条断言未改期望、未跳过。
+官方套件与独立复现集都跑在纯 Node 上，零依赖：Host 套件用临时 `DSH_HOME` 驱动真实路由处理函数，Client 套件用极简 hook 运行时执行组件树。故障注入钩子仅在 `DSHSC_TEST_HOOKS=1` 时生效。独立 67 条断言未改期望、未跳过。
 
 ```
-83/83 passed    official host
-141/141 passed  official client
-50/50 passed    independent host
+92/92 passed    official host
+144/144 passed  official client
+53/53 passed    independent host
 14/14 passed    independent client
 ```
 
@@ -156,7 +158,7 @@ npm run test:independent
 `$DSH_HOME/backups/session-cleanup-<YYYYMMDD-HHmmss-mmm>/`，同目录下 `manifest.json` 记录批次、会话 id、cwd 分组、标题、体积和删除时间。
 
 **为什么有些会话删不掉？**
-它正被 live Agent 持有（已打开或正在运行），日志写入句柄还开着。切到别的会话再删。
+只有正在跑回合（`running`）的会话删不掉：那一轮还在往日志里追加事件。先停止该回合再删。已打开但空闲（`已打开`、`running: false`）的会话可以直接删除，目录会整体移入回收站。
 
 **回收站会占空间吗？**
 会，而且和原来一样大 —— 这是可撤销的代价。确认无误后 purge 或清空回收站。
@@ -181,7 +183,7 @@ Restart the harness afterwards — a **Session Cleanup** entry shows up in the s
 
 DSH has no session-delete capability (removing a Workspace registration deliberately leaves session histories in place). This plugin owns the missing operations.
 
-- **Size-sorted list** — sessions grouped by workspace with byte size, last-updated time, and a live/running badge.
+- **Size-sorted list** — sessions grouped by workspace with byte size, last-updated time, and an open/running badge.
 - **Archive / unarchive** — delegates to `workspaceRegistry.archiveSession`; archived sessions leave the active list without touching bytes.
 - **Reversible delete** — the session directory *and* its projection-cache file are **moved** into `$DSH_HOME/backups/session-cleanup-<stamp>/` with a manifest. Nothing is destroyed.
 - **Restore per batch or per session** — undo a whole delete action, or bring back a single session of it.
@@ -189,7 +191,7 @@ DSH has no session-delete capability (removing a Workspace registration delibera
 - **Orphan cache cleanup** — remove `session_projcache/sessions/*.json` whose session log is gone, reporting freed bytes.
 - **Stale archive pruning** — drop archive/pin entries whose session log no longer exists.
 
-Safety: a session still attached to a live Agent owns its log writer, so it is skipped rather than moved. Nothing outside `$DSH_HOME/sessions` is ever moved; nothing outside `$DSH_HOME/backups` is ever removed. Moves are rollback-safe, cross-volume moves fall back to copy-then-remove, and both routes reject cross-site writes.
+Safety: only a session with a turn in flight owns its log writer, so only that one is skipped. An attached-but-idle session is moved like any other, and the Host is told the row is gone. Nothing outside `$DSH_HOME/sessions` is ever moved; nothing outside `$DSH_HOME/backups` is ever removed. Moves are rollback-safe, cross-volume moves fall back to copy-then-remove, and both routes reject cross-site writes.
 
 ## License
 

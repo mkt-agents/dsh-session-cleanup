@@ -746,13 +746,17 @@ async function moveToTrash(ctx, sessionId, sharedBatch, label) {
   if (!isSafeSegment(sessionId)) {
     return { sessionId, ok: false, error: 'invalid-session-id' }
   }
-  if (isAttached(ctx, sessionId)) {
+  // An attached-but-idle Session is safe to move: its log directory is closed
+  // between turns, so the rename lands and the Host row is dropped by the
+  // `api-session/removed` emit below. Only a Session with an active turn holds a
+  // writer mid-append, and that one is refused with a distinct code.
+  if (await isRunning(ctx, sessionId)) {
     return {
       sessionId,
       ok: false,
       skipped: true,
-      error: 'session-in-use',
-      reason: '这个会话正在使用中（已打开或正在运行），请先切换到其他会话再删除。',
+      error: 'session-running',
+      reason: '这个会话正在运行中（有进行中的回合），请先停止它再删除。',
     }
   }
 
@@ -888,6 +892,29 @@ async function moveToTrash(ctx, sessionId, sharedBatch, label) {
 function isAttached(ctx, sessionId) {
   if (ctx.get('sessions')?.get?.(sessionId) !== undefined) return true
   if (ctx.get('agents')?.get?.(sessionId) !== undefined) return true
+  return false
+}
+
+/**
+ * Whether this Session has an active turn right now. A running Agent appends to
+ * its log through the turn, so moving the directory out from under it would lose
+ * events; an attached-but-idle Agent does not.
+ * @param ctx - Host plugin context.
+ * @param sessionId - Session to probe.
+ * @returns true when the Session is mid-turn.
+ */
+async function isRunning(ctx, sessionId) {
+  const agent = ctx.get('agents')?.get?.(sessionId)
+  if (agent?.status === 'running') return true
+  const controller = ctx.get('sessionController')
+  if (typeof controller?.list !== 'function') return false
+  try {
+    const value = await controller.list({}, timeoutSignal(STATE_TIMEOUT_MS))
+    for (const item of value?.items ?? []) {
+      if (String(item?.sessionId ?? '') !== sessionId) continue
+      return item.running === true
+    }
+  } catch {}
   return false
 }
 

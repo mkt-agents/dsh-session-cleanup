@@ -98,7 +98,7 @@ const hostState = {
   pinnedSessionIds: ['s2'],
   sessions: [
     { id: 's1', title: 'Heavy session', updatedAt: 1794041000000, blank: false, running: true, live: true, cwd: 'D:\\demo\\alpha', origin: null, parentSessionId: null, sizeBytes: 12 * 1024 * 1024 },
-    { id: 's2', title: 'Pinned small', updatedAt: 1794040000000, blank: false, running: false, live: false, cwd: 'D:\\demo\\alpha', origin: null, parentSessionId: null, sizeBytes: 2048 },
+    { id: 's2', title: 'Pinned small', updatedAt: 1794040000000, blank: false, running: false, live: true, cwd: 'D:\\demo\\alpha', origin: null, parentSessionId: null, sizeBytes: 2048 },
     { id: 's3', title: 'Archived one', updatedAt: 1794039000000, blank: false, running: false, live: false, cwd: 'D:\\demo\\alpha', origin: null, parentSessionId: null, sizeBytes: 4096 },
     { id: 's4', title: '', updatedAt: 1794038000000, blank: true, running: false, live: false, cwd: 'D:\\demo\\beta', origin: null, parentSessionId: 's1', sizeBytes: 0 },
     { id: 's5', title: 'Stray', updatedAt: 1794037000000, blank: false, running: false, live: false, cwd: '', origin: null, parentSessionId: null, sizeBytes: 1024 },
@@ -492,6 +492,20 @@ await settle()
 
 const rowChecks = find(tree, (node) => node.props?.className === 'dshsc-check' && node.props?.['aria-label'] === 'Pinned small')
 check('row checkbox for cold session', rowChecks.length === 1, rowChecks.length)
+
+// An attached-but-idle Session (live, not running) keeps a working delete
+// button; only a Session with a turn in flight is refused.
+const idleRow = find(tree, (node) => typeof node.props?.className === 'string' && node.props.className.startsWith('dshsc-row') && textOf(node).includes('Pinned small'))[0]
+const idleDelete = find(idleRow, byText('删除'))[0]
+check('attached-but-idle row delete is enabled', idleDelete?.props.disabled === false, idleDelete?.props)
+const busyRow = find(tree, (node) => typeof node.props?.className === 'string' && node.props.className.startsWith('dshsc-row') && textOf(node).includes('Heavy session'))[0]
+const busyDelete = find(busyRow, byText('删除'))[0]
+check('running row delete is disabled', busyDelete?.props.disabled === true, busyDelete?.props)
+check(
+  'running row explains the refusal',
+  typeof busyDelete?.props.title === 'string' && busyDelete.props.title.includes('正在运行'),
+  busyDelete?.props.title,
+)
 rowChecks[0].props.onChange()
 await settle()
 
@@ -575,15 +589,15 @@ check('menu delete carries the title', menuDelete?.init?.body.includes('"s9":"Me
 check('menu success notice', menuState.notifications.some((n) => n.success === true && n.text === '已移入回收站。'))
 check('menu refreshes the sidebar list', menuState.refreshed > refreshedBeforeMenu, menuState.refreshed)
 
-// A live Session is refused by the Host; the menu must say why and leave the list alone.
-menuFailure = 'session-in-use'
+// A running Session is refused by the Host; the menu must say why and leave the list alone.
+menuFailure = 'session-running'
 const refusedRows = menuState.registration.resolve({ kind: 'session', sessionId: 's10', displayTitle: 'Open one' })
 const refreshedBeforeRefusal = menuState.refreshed
 refusedRows[0].run()
 await new Promise((resolve) => setTimeout(resolve, 25))
 check(
-  'menu reports the in-use refusal',
-  menuState.notifications.some((n) => n.success === false && n.text.includes('正在使用中')),
+  'menu reports the running refusal',
+  menuState.notifications.some((n) => n.success === false && n.text.includes('正在运行中')),
   menuState.notifications.slice(-2),
 )
 check('menu keeps the list after a refusal', menuState.refreshed === refreshedBeforeRefusal, menuState.refreshed)

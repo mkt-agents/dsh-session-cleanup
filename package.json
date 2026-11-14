@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-session-cleanup",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "description": "Sidebar session cleanup panel: sort sessions by size, archive them, delete them into an undoable recycle bin, and clear orphaned projection cache.",
